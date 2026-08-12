@@ -107,7 +107,7 @@ PDF / DOI / arXiv / URL / 笔记
 │   ├── result-analysis.md
 │   ├── manuscript-outline.md
 │   └── rebuttal-matrix.md
-├── skills/
+├── .agents/skills/
 │   └── <阶段化科研技能>/SKILL.md
 ├── src/research_os/
 │   ├── cli.py

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -69,8 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _run(args: argparse.Namespace) -> int:
     if args.command == "new-project":
         path = create_project(args.workspace, args.title, args.slug)
         print(f"已创建课题: {path}")
@@ -128,6 +128,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 2
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 2
 
 
 def entrypoint() -> None:

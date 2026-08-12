@@ -26,7 +26,7 @@ def split_frontmatter(text: str) -> tuple[dict[str, object], str]:
 
 def test_all_skills_have_valid_minimal_frontmatter_and_ui_metadata() -> None:
     for name in NAMES:
-        skill = ROOT / "skills" / name / "SKILL.md"
+        skill = ROOT / ".agents" / "skills" / name / "SKILL.md"
         frontmatter, body = split_frontmatter(skill.read_text(encoding="utf-8"))
 
         assert set(frontmatter) == {"name", "description"}
@@ -42,7 +42,7 @@ def test_all_skills_have_valid_minimal_frontmatter_and_ui_metadata() -> None:
 
 def test_each_skill_has_evidence_and_privacy_guardrails() -> None:
     for name in NAMES:
-        text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        text = (ROOT / ".agents" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
 
         assert "可识别健康信息" in text
         assert "禁止编造" in text
@@ -51,10 +51,10 @@ def test_each_skill_has_evidence_and_privacy_guardrails() -> None:
 
 def test_execution_and_writing_skills_have_specific_hard_gates() -> None:
     experiment = (
-        ROOT / "skills/experiment-advisor/SKILL.md"
+        ROOT / ".agents/skills/experiment-advisor/SKILL.md"
     ).read_text(encoding="utf-8")
     manuscript = (
-        ROOT / "skills/manuscript-assistant/SKILL.md"
+        ROOT / ".agents/skills/manuscript-assistant/SKILL.md"
     ).read_text(encoding="utf-8")
 
     assert "不得运行训练" in experiment
