@@ -1,0 +1,4 @@
+project: "{{PROJECT_TITLE}}"
+schema_version: 1
+claims: []
+
