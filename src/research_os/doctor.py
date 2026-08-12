@@ -5,11 +5,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from research_os.project import (
+    _is_link_or_reparse_point,
     load_project_manifest,
     resolve_project_path,
     resolve_workspace_directory,
 )
 from research_os.sources import SourceRegistry
+from research_os.cycle import load_active_cycle, load_cycle_manifest
+from research_os.ideas import load_idea_archive
+from research_os.journal import validate_journal
 
 
 EXPECTED_SKILLS = (
@@ -93,6 +97,49 @@ def _check_projects(
                 if missing_ids:
                     problems.append(
                         f"{project_path.name} 关联了无效来源: {', '.join(missing_ids)}"
+                    )
+            archive_path = resolved_project / "ideas" / "archive.yaml"
+            if archive_path.exists():
+                load_idea_archive(
+                    archive_path, allowed_source_ids=set(manifest.source_ids)
+                )
+            cycles = resolved_project / "cycles"
+            if cycles.exists():
+                if not cycles.is_dir() or _is_link_or_reparse_point(cycles):
+                    raise ValueError("cycles 必须是课题内的真实目录")
+                _active_dir, active_manifest = load_active_cycle(
+                    workspace, manifest.slug
+                )
+                run_count = 0
+                for run_dir in sorted(cycles.iterdir()):
+                    if not run_dir.name.startswith("run-"):
+                        continue
+                    run_count += 1
+                    if not run_dir.is_dir() or _is_link_or_reparse_point(run_dir):
+                        raise ValueError(f"cycle run 路径无效: {run_dir.name}")
+                    run_manifest = load_cycle_manifest(run_dir / "manifest.yaml")
+                    if run_manifest.project_slug != manifest.slug:
+                        raise ValueError(
+                            f"cycle {run_dir.name} 属于其他课题"
+                        )
+                if run_count == 0:
+                    raise ValueError("cycles 存在但没有可读 run")
+                if active_manifest.run_id not in {
+                    run_dir.name
+                    for run_dir in cycles.iterdir()
+                    if run_dir.is_dir()
+                }:
+                    raise ValueError("active run 不在 cycles 目录中")
+                journal = resolved_project / "research-journal.jsonl"
+                if not journal.is_file():
+                    raise ValueError("cycle 存在但 research journal 缺失")
+                journal_issues = validate_journal(
+                    journal, project_root=resolved_project
+                )
+                if journal_issues:
+                    raise ValueError(
+                        "research journal 校验失败: "
+                        + "; ".join(journal_issues)
                     )
         except (OSError, ValueError) as exc:
             problems.append(f"{project_path.name} 无法读取: {exc}")

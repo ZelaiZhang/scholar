@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import subprocess
 
@@ -6,8 +7,17 @@ import pytest
 
 import research_os.cli as cli_module
 from research_os.cli import _configure_windows_utf8, build_parser, main
-from research_os.project import create_project, load_project_manifest
+from research_os.project import create_project, link_project_sources, load_project_manifest
 from research_os.provider import CompletionResult
+from research_os.ideas import (
+    IdeaArchive,
+    IdeaRecord,
+    IdeaScores,
+    NoveltyEvidence,
+    load_idea_archive,
+    save_idea_archive,
+)
+from research_os.cycle import advance_cycle
 
 
 def test_cli_creates_project_and_registers_note(
@@ -111,6 +121,201 @@ def test_model_call_requires_source_level_authorization_arguments() -> None:
                 "--allow-external-api",
             ]
         )
+
+
+def test_cycle_cli_creates_and_resumes_one_local_action(
+    tmp_path: Path, capsys
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    args = ["cycle", "--project", "topic-a", "--workspace", str(tmp_path)]
+
+    assert main(args) == 0
+    first = capsys.readouterr().out
+    assert "状态: candidate_generation" in first
+    assert "调用: 0/6" in first
+    assert first.count("下一步:") == 1
+    run_id = next(line.split(": ", 1)[1] for line in first.splitlines() if line.startswith("Run: "))
+
+    assert main(args) == 0
+    second = capsys.readouterr().out
+    assert f"Run: {run_id}" in second
+
+
+def test_cycle_cli_rejects_invalid_bounds_and_provider_without_permission(
+    tmp_path: Path, capsys
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    assert (
+        main(
+            [
+                "cycle",
+                "--project",
+                "topic-a",
+                "--max-ideas",
+                "0",
+                "--workspace",
+                str(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert "max_ideas" in capsys.readouterr().err
+
+    assert (
+        main(
+            [
+                "cycle",
+                "--project",
+                "topic-a",
+                "--provider-role",
+                "economy",
+                "--workspace",
+                str(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert "--allow-external-api" in capsys.readouterr().err
+
+
+def _shortlisted_idea() -> IdeaRecord:
+    return IdeaRecord(
+        idea_id="idea-0001",
+        parent_ids=(),
+        title="A testable idea",
+        scientific_question="Does X improve Y?",
+        hypothesis="X improves Y.",
+        contribution="A bounded comparison.",
+        evidence_source_ids=(),
+        novelty=NoveltyEvidence(
+            status="checked",
+            queries=("X Y comparison",),
+            nearest_source_ids=("src-neighbour",),
+            differences="Uses a different evidence gate.",
+            unresolved_overlap="",
+        ),
+        scores=IdeaScores(8, 7, 7, 6),
+        method_risks=("Leakage",),
+        medical_safety_risks=("No clinical claim",),
+        failure_criterion="Y does not improve.",
+        external_experiment="Evaluate in an independent repository.",
+        status="shortlisted",
+        generated_by_run="run-test",
+        provenance={"generator": "fixture"},
+        researcher_decision=None,
+    )
+
+
+def test_approve_idea_cli_is_human_only_and_records_decision(
+    tmp_path: Path, capsys
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    link_project_sources(tmp_path, "topic-a", ["src-neighbour"])
+    created = advance_cycle(tmp_path, "topic-a")
+    candidate = IdeaRecord(
+        **{
+            **_shortlisted_idea().__dict__,
+            "status": "draft",
+            "generated_by_run": created.run_id,
+        }
+    )
+    candidate_path = project / "cycles" / created.run_id / "candidates.yaml"
+    save_idea_archive(
+        candidate_path, IdeaArchive(1, "topic-a", (candidate,))
+    )
+    assert advance_cycle(tmp_path, "topic-a").state == "independent_review"
+    reviews = project / "cycles" / created.run_id / "reviews"
+    reviews.mkdir()
+    assessment = {
+        "idea_id": "idea-0001",
+        "strengths": ["Testable"],
+        "concerns": ["Scope"],
+        "blocking_issues": [],
+        "recommendation": "advance",
+        "confidence": 4,
+    }
+    for role in ("novelty", "methods", "medical-safety"):
+        (reviews / f"{role}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "run_id": created.run_id,
+                    "role": role,
+                    "assessments": [assessment],
+                }
+            ),
+            encoding="utf-8",
+        )
+    assert advance_cycle(tmp_path, "topic-a").state == "meta_review"
+    (project / "cycles" / created.run_id / "meta-review.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": created.run_id,
+                "consensus": ["Testable"],
+                "conflicts": [],
+                "blocking_issues": [],
+                "shortlist_ids": ["idea-0001"],
+                "rationale_by_idea": {"idea-0001": "Best bounded option"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert advance_cycle(tmp_path, "topic-a").state == "awaiting_human_decision"
+    archive_path = project / "ideas" / "archive.yaml"
+
+    exit_code = main(
+        [
+            "approve-idea",
+            "--project",
+            "topic-a",
+            "--idea",
+            "idea-0001",
+            "--reason",
+            "Evidence and scope are acceptable",
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert "idea-0001" in capsys.readouterr().out
+    selected = load_idea_archive(
+        archive_path, allowed_source_ids={"src-neighbour"}
+    ).ideas[0]
+    assert selected.status == "selected"
+    assert selected.researcher_decision is not None
+    assert selected.researcher_decision.actor == "researcher"
+    assert (project / "research-journal.jsonl").is_file()
+
+
+def test_approve_idea_cli_rejects_handcrafted_shortlist_without_active_review(
+    tmp_path: Path, capsys
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    link_project_sources(tmp_path, "topic-a", ["src-neighbour"])
+    save_idea_archive(
+        project / "ideas" / "archive.yaml",
+        IdeaArchive(1, "topic-a", (_shortlisted_idea(),)),
+    )
+
+    exit_code = main(
+        [
+            "approve-idea",
+            "--project",
+            "topic-a",
+            "--idea",
+            "idea-0001",
+            "--reason",
+            "Bypass attempt",
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 2
+    error = capsys.readouterr().err
+    assert "active" in error or "run" in error
 
 
 def test_validate_ledger_rejects_source_id_missing_from_registry(

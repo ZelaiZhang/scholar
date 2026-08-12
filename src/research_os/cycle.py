@@ -15,10 +15,11 @@ from research_os.ideas import (
     IdeaArchive,
     IdeaRecord,
     idea_content_hash,
+    approve_idea,
     load_idea_archive,
     save_idea_archive,
 )
-from research_os.io import atomic_write_text
+from research_os.io import atomic_write_bytes, atomic_write_text
 from research_os.journal import append_event
 from research_os.project import (
     _is_link_or_reparse_point,
@@ -661,6 +662,92 @@ def _active_run(project: Path) -> tuple[Path, CycleManifest]:
     if manifest.project_slug != project.name:
         raise ValueError("active cycle belongs to a different project")
     return run_dir, manifest
+
+
+def load_active_cycle(
+    workspace: Path, slug: str
+) -> tuple[Path, CycleManifest]:
+    project = resolve_project_path(workspace, slug, require_exists=True)
+    return _active_run(project)
+
+
+def approve_active_cycle_idea(
+    workspace: Path,
+    slug: str,
+    idea_id: str,
+    *,
+    reason: str,
+) -> IdeaRecord:
+    project = resolve_project_path(workspace, slug, require_exists=True)
+    project_manifest = load_project_manifest(project)
+    if not (project / "cycles").is_dir():
+        raise ValueError("no active reviewed run exists for Idea approval")
+    run_dir, manifest = _active_run(project)
+    if manifest.state != "awaiting_human_decision":
+        raise ValueError(
+            "active run is not awaiting a human Idea decision"
+        )
+    candidates_path = run_dir / "candidates.yaml"
+    reviews_dir = run_dir / "reviews"
+    meta_path = run_dir / "meta-review.json"
+    if (
+        not candidates_path.is_file()
+        or _sha256_file(candidates_path) != manifest.candidate_sha256
+    ):
+        raise ValueError("active run candidate snapshot is missing or changed")
+    if _reviews_digest(reviews_dir) != manifest.reviews_sha256:
+        raise ValueError("active run independent reviews are missing or changed")
+    if not meta_path.is_file() or _sha256_file(meta_path) != manifest.meta_review_sha256:
+        raise ValueError("active run meta-review is missing or changed")
+    source_ids = set(project_manifest.source_ids)
+    candidates = _load_candidates(
+        candidates_path, manifest=manifest, source_ids=source_ids
+    )
+    candidate_ids = {idea.idea_id for idea in candidates.ideas}
+    load_review_bundle(reviews_dir, expected_idea_ids=candidate_ids)
+    meta = load_meta_review(
+        meta_path,
+        expected_idea_ids=candidate_ids,
+        expected_run_id=manifest.run_id,
+    )
+    if idea_id not in meta.shortlist_ids:
+        raise ValueError(f"Idea is not shortlisted by the active meta-review: {idea_id}")
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(archive_path, allowed_source_ids=source_ids)
+    frozen_by_id = {idea.idea_id: idea for idea in candidates.ideas}
+    selected_record = next(
+        (
+            idea
+            for idea in archive.ideas
+            if idea.idea_id == idea_id and idea.generated_by_run == manifest.run_id
+        ),
+        None,
+    )
+    if selected_record is None:
+        raise ValueError(f"active run Idea is missing from the archive: {idea_id}")
+    if idea_content_hash(selected_record) != idea_content_hash(frozen_by_id[idea_id]):
+        raise ValueError("active run Idea no longer matches its frozen reviewed candidate")
+    approved = approve_idea(archive, idea_id, reason=reason)
+    snapshot = archive_path.read_bytes()
+    archive_identity = _directory_identity(archive_path.parent)
+    save_idea_archive(archive_path, approved)
+    approved_record = next(idea for idea in approved.ideas if idea.idea_id == idea_id)
+    try:
+        _record(
+            project,
+            event_type="idea_approved",
+            run_id=manifest.run_id,
+            artifact=archive_path,
+            summary=f"Researcher approved {idea_id}: {reason.strip()}",
+        )
+    except BaseException:
+        atomic_write_bytes(
+            archive_path,
+            snapshot,
+            expected_parent_identity=archive_identity,
+        )
+        raise
+    return approved_record
 
 
 def _ensure_archive(project: Path, slug: str, source_ids: set[str]) -> Path:

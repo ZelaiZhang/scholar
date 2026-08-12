@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from research_os.doctor import render_doctor, run_doctor
+from research_os.cycle import advance_cycle, approve_active_cycle_idea
 from research_os.evidence import load_ledger, render_validation_report, validate_ledger
 from research_os.guidance import guide_project, render_guide
 from research_os.io import atomic_write_bytes, atomic_write_text
@@ -20,6 +21,7 @@ from research_os.project import (
     resolve_workspace_directory,
 )
 from research_os.provider import OpenAICompatibleProvider
+from research_os.provider_config import load_provider
 from research_os.sources import (
     SourceRegistry,
     load_authorized_external_texts,
@@ -44,6 +46,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guide_parser.add_argument("--project", help="课题 slug；只有一个课题时可省略")
     guide_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    cycle_parser = subparsers.add_parser(
+        "cycle", help="创建或恢复有界、可审计的科研循环"
+    )
+    cycle_parser.add_argument("--project", required=True, help="课题 slug")
+    cycle_parser.add_argument("--new-run", action="store_true", help="显式开始新 run")
+    cycle_parser.add_argument("--max-ideas", type=int, help="候选 Idea 上限（1-10）")
+    cycle_parser.add_argument("--max-calls", type=int, help="模型调用上限（1-20）")
+    cycle_parser.add_argument("--provider-role", help="config/providers.yaml 中的角色")
+    cycle_parser.add_argument(
+        "--allow-external-api",
+        action="store_true",
+        help="明确授权本次调用外部 API；仍需每个来源已授权",
+    )
+    cycle_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    approve_parser = subparsers.add_parser(
+        "approve-idea", help="由研究者批准一个已入围 Idea"
+    )
+    approve_parser.add_argument("--project", required=True, help="课题 slug")
+    approve_parser.add_argument("--idea", required=True, help="Idea ID")
+    approve_parser.add_argument("--reason", required=True, help="人工批准理由")
+    approve_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     project_parser = subparsers.add_parser("new-project", help="创建规范科研课题")
     project_parser.add_argument("--title", required=True, help="中文或英文课题标题")
@@ -286,6 +311,48 @@ def _run(args: argparse.Namespace) -> int:
                 )
             slug = slugs[0]
         print(render_guide(guide_project(args.workspace, slug)), end="")
+        return 0
+    if args.command == "cycle":
+        if args.provider_role and not args.allow_external_api:
+            raise PermissionError(
+                "使用外部 provider 必须同时显式传入 --allow-external-api"
+            )
+        if args.allow_external_api and not args.provider_role:
+            raise ValueError("--allow-external-api 只能与 --provider-role 一起使用")
+        provider = None
+        if args.provider_role:
+            provider = load_provider(
+                args.workspace.resolve() / "config" / "providers.yaml",
+                args.provider_role,
+            )
+        action = advance_cycle(
+            args.workspace,
+            args.project,
+            new_run=args.new_run,
+            max_ideas=args.max_ideas,
+            max_calls=args.max_calls,
+            provider=provider,
+            allow_external_api=args.allow_external_api,
+        )
+        target = str(action.target) if action.target is not None else "-"
+        print(f"Run: {action.run_id}")
+        print(f"状态: {action.state}")
+        print(
+            f"调用: {action.manifest.calls_used}/{action.manifest.max_calls}"
+        )
+        print(f"原因: {action.reason}")
+        print(f"目标: {target}")
+        print(f"下一步: {action.next_action}")
+        return 0
+    if args.command == "approve-idea":
+        approve_active_cycle_idea(
+            args.workspace,
+            args.project,
+            args.idea,
+            reason=args.reason,
+        )
+        print(f"已由研究者批准 Idea: {args.idea}")
+        print(f"下一步: research-os cycle --project {args.project}")
         return 0
     if args.command == "new-project":
         path = create_project(args.workspace, args.title, args.slug)

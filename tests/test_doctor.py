@@ -6,6 +6,7 @@ import pytest
 
 from research_os.doctor import EXPECTED_SKILLS, run_doctor
 from research_os.project import create_project, link_project_sources
+from research_os.cycle import advance_cycle
 
 
 def make_healthy_workspace(path: Path) -> None:
@@ -186,3 +187,60 @@ def test_doctor_reports_project_source_ids_missing_from_registry(
     projects = next(item for item in report.items if item.name == "projects")
     assert projects.level == "fail"
     assert "src-missing" in projects.message
+
+
+def test_doctor_reports_corrupt_idea_archive_without_crashing(
+    tmp_path: Path,
+) -> None:
+    make_healthy_workspace(tmp_path)
+    project = create_project(tmp_path, "A", "topic-a")
+    ideas = project / "ideas"
+    ideas.mkdir()
+    (ideas / "archive.yaml").write_text("schema_version: [broken", encoding="utf-8")
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    projects = next(item for item in report.items if item.name == "projects")
+    assert projects.level == "fail"
+    assert "archive" in projects.message
+
+
+def test_doctor_checks_corrupt_inactive_cycle_manifest(
+    tmp_path: Path,
+) -> None:
+    make_healthy_workspace(tmp_path)
+    project = create_project(tmp_path, "A", "topic-a")
+    first = advance_cycle(tmp_path, "topic-a")
+    advance_cycle(tmp_path, "topic-a", new_run=True)
+    (project / "cycles" / first.run_id / "manifest.yaml").write_text(
+        "schema_version: [broken", encoding="utf-8"
+    )
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    projects = next(item for item in report.items if item.name == "projects")
+    assert projects.level == "fail"
+    assert first.run_id in projects.message
+
+
+def test_doctor_detects_tampered_research_journal(tmp_path: Path) -> None:
+    make_healthy_workspace(tmp_path)
+    project = create_project(tmp_path, "A", "topic-a")
+    advance_cycle(tmp_path, "topic-a")
+    journal = project / "research-journal.jsonl"
+    journal.write_text(
+        journal.read_text(encoding="utf-8").replace("bounded", "tampered", 1),
+        encoding="utf-8",
+    )
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    projects = next(item for item in report.items if item.name == "projects")
+    assert projects.level == "fail"
+    assert "journal" in projects.message or "日志" in projects.message

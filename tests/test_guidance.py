@@ -11,6 +11,7 @@ from research_os.project import (
     write_project_manifest,
 )
 from research_os.sources import SourceRegistry
+from research_os.cycle import advance_cycle
 
 
 def create_progressed_project_through_design(tmp_path: Path) -> Path:
@@ -231,7 +232,8 @@ def test_single_character_edit_does_not_complete_idea_stage(
 
     idea_stage = next(stage for stage in report.stages if stage.name == "Idea 审查")
     assert idea_stage.status == "进行中"
-    assert report.next_action.skill == "idea-review"
+    assert report.next_action.skill is None
+    assert report.next_action.command == "research-os cycle --project topic-a"
 
 
 def test_unknown_linked_source_gives_actionable_intake_fix_not_ledger_loop(
@@ -249,3 +251,35 @@ def test_unknown_linked_source_gives_actionable_intake_fix_not_ledger_loop(
     assert report.next_action.skill == "paper-intake"
     assert "validate-ledger" not in report.next_action.command
     assert "src-missing" in report.next_action.command
+
+
+def test_idea_stage_starts_supervised_cycle_instead_of_legacy_idea_file(
+    tmp_path: Path,
+) -> None:
+    project = create_progressed_project_through_design(tmp_path)
+    (project / "04-idea-candidates.md").write_text(
+        "# A：Idea candidates\n\nCandidate work has begun.\n",
+        encoding="utf-8",
+    )
+
+    report = guide_project(tmp_path, "topic-a")
+
+    assert report.next_action.skill is None
+    assert report.next_action.command == "research-os cycle --project topic-a"
+    assert report.next_action.target == "cycles/"
+
+
+def test_active_cycle_overrides_legacy_idea_and_design_markers(
+    tmp_path: Path,
+) -> None:
+    create_progressed_project_through_design(tmp_path)
+    action = advance_cycle(tmp_path, "topic-a")
+
+    report = guide_project(tmp_path, "topic-a")
+
+    idea_stage = next(stage for stage in report.stages if stage.name == "Idea 审查")
+    assert idea_stage.status == "进行中"
+    assert action.run_id in idea_stage.detail
+    assert report.next_action.skill == "research-cycle"
+    assert action.run_id in report.next_action.command
+    assert "$research-cycle" in report.next_action.command

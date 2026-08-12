@@ -11,6 +11,8 @@ from research_os.project import (
     template_content,
 )
 from research_os.sources import SourceRegistry
+from research_os.cycle import CycleManifest, load_active_cycle
+from research_os.ideas import load_idea_archive
 
 
 @dataclass(frozen=True)
@@ -169,7 +171,32 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         manifest.title,
         "idea-complete",
     )
-    idea_ready = idea_progress == "complete"
+    legacy_idea_ready = idea_progress == "complete"
+    cycle_manifest: CycleManifest | None = None
+    cycle_error = ""
+    selected_idea_ids: tuple[str, ...] = ()
+    if (project_path / "cycles").exists():
+        try:
+            _run_dir, cycle_manifest = load_active_cycle(workspace, slug)
+            archive = load_idea_archive(
+                project_path / "ideas" / "archive.yaml",
+                allowed_source_ids=set(manifest.source_ids),
+            )
+            selected_idea_ids = tuple(
+                idea.idea_id
+                for idea in archive.ideas
+                if idea.status == "selected"
+                and idea.generated_by_run == cycle_manifest.run_id
+            )
+            if cycle_manifest.state == "completed" and not selected_idea_ids:
+                cycle_error = "completed run 缺少匹配的人工批准 Idea"
+        except (OSError, UnicodeError, ValueError) as exc:
+            cycle_error = str(exc)
+    idea_ready = (
+        bool(selected_idea_ids)
+        if cycle_manifest is not None
+        else legacy_idea_ready
+    )
     design_progress = _document_progress(
         project_path,
         "05-experiment-design.md",
@@ -234,6 +261,26 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         result_status = "进行中"
         result_detail = f"已导入 {len(result_inputs)} 个结果文件，尚未解读"
 
+    if cycle_error:
+        idea_stage_status = "受阻"
+        idea_stage_detail = f"科研循环不可读：{cycle_error}"
+    elif cycle_manifest is not None:
+        idea_stage_status = (
+            "已产出" if cycle_manifest.state == "completed" and idea_ready else "进行中"
+        )
+        idea_stage_detail = (
+            f"{cycle_manifest.run_id} · {cycle_manifest.state} · "
+            f"调用 {cycle_manifest.calls_used}/{cycle_manifest.max_calls}"
+        )
+    else:
+        idea_stage_status = _progress_status(idea_progress)
+        idea_stage_detail = {
+            "blocked": "Idea 文件缺失",
+            "unstarted": "仍是空白模板",
+            "in_progress": "已编辑，等待启动结构化科研循环",
+            "complete": "旧版候选 Idea 已通过反向审查门禁",
+        }[idea_progress]
+
     stages = (
         StageView(
             "课题定义",
@@ -254,13 +301,8 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         StageView("文献综合", synthesis_status, evidence_detail),
         StageView(
             "Idea 审查",
-            _progress_status(idea_progress),
-            {
-                "blocked": "Idea 文件缺失",
-                "unstarted": "仍是空白模板",
-                "in_progress": "已编辑，尚未通过反向审查门禁",
-                "complete": "候选 Idea 已通过反向审查门禁",
-            }[idea_progress],
+            idea_stage_status,
+            idea_stage_detail,
         ),
         StageView(
             "实验设计",
@@ -340,12 +382,40 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
             ),
             skill="literature-synthesis",
         )
+    elif cycle_error:
+        next_action = NextAction(
+            reason="科研循环或 Idea 档案损坏，不能安全推进或自动修复。",
+            target="cycles/ / ideas/archive.yaml",
+            command=f"research-os doctor --workspace .  # 修复课题 {slug} 后重试",
+            skill=None,
+        )
+    elif cycle_manifest is not None and cycle_manifest.state != "completed":
+        if cycle_manifest.state == "awaiting_human_decision":
+            next_action = NextAction(
+                reason="三路独立评审与 meta-review 已完成，必须由研究者决定。",
+                target="ideas/archive.yaml",
+                command=(
+                    f"research-os approve-idea --project {slug} "
+                    '--idea IDEA_ID --reason "你的人工判断"'
+                ),
+                skill=None,
+            )
+        else:
+            next_action = NextAction(
+                reason="已有未完成的可恢复科研循环，应只执行其当前阶段。",
+                target=f"cycles/{cycle_manifest.run_id}/work-packet.md",
+                command=(
+                    f"$research-cycle 推进 {slug} 的 {cycle_manifest.run_id}，"
+                    "只处理工作包指定阶段"
+                ),
+                skill="research-cycle",
+            )
     elif not idea_ready:
         next_action = NextAction(
-            reason="证据基础已经形成，下一步应审查候选创新而不是直接定题。",
-            target="04-idea-candidates.md",
-            command=f"$idea-review 基于 {slug} 的核验证据生成并反向审查候选 Idea",
-            skill="idea-review",
+            reason="证据基础已经形成，下一步启动有预算、可恢复的结构化 Idea 循环。",
+            target="cycles/",
+            command=f"research-os cycle --project {slug}",
+            skill=None,
         )
     elif not design_ready:
         next_action = NextAction(
