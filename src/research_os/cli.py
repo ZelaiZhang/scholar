@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+from research_os.io import atomic_write_text
+from research_os.pdf import extract_pdf
 from research_os.project import create_project
 from research_os.sources import SourceRegistry
 
@@ -29,6 +31,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="明确允许把此公开来源发送给外部模型",
     )
     source_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    pdf_parser = subparsers.add_parser(
+        "extract-pdf", help="提取 PDF 文本并保留页码边界"
+    )
+    pdf_parser.add_argument("pdf", type=Path)
+    pdf_parser.add_argument("--output", type=Path, required=True)
+    pdf_parser.add_argument(
+        "--force", action="store_true", help="允许覆盖已有的生成文本"
+    )
     return parser
 
 
@@ -46,6 +57,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             external_api_allowed=args.allow_external_api,
         )
         print(f"已登记来源: {record.source_id} ({record.kind})")
+        return 0
+    if args.command == "extract-pdf":
+        if args.output.exists() and not args.force:
+            raise FileExistsError(f"输出已存在，使用 --force 才能覆盖: {args.output}")
+        result = extract_pdf(args.pdf)
+        atomic_write_text(args.output.resolve(), result.markdown)
+        print(f"已提取 {len(result.pages)} 页: {args.output.resolve()}")
         return 0
     return 2
 
