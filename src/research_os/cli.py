@@ -545,6 +545,14 @@ def _dashboard_payload(snapshot: ProjectDashboard) -> dict[str, object]:
             "human_decision_required": snapshot.idea.human_decision_required,
             "calls_used": snapshot.idea.calls_used,
             "max_calls": snapshot.idea.max_calls,
+            "candidate_generation_complete": (
+                snapshot.idea.candidate_generation_complete
+            ),
+            "novelty_check_complete": snapshot.idea.novelty_check_complete,
+            "independent_review_complete": (
+                snapshot.idea.independent_review_complete
+            ),
+            "meta_review_complete": snapshot.idea.meta_review_complete,
         },
         "recommendations": _recommendation_payload(snapshot.recommendations),
         "risks": [
@@ -618,6 +626,13 @@ def _render_dashboard(snapshot: ProjectDashboard) -> str:
             f"- Run: {snapshot.idea.run_id or '-'}",
             f"- 循环状态: {snapshot.idea.cycle_state}",
             f"- 候选数: {snapshot.idea.candidate_count}",
+            (
+                "- 门禁: "
+                f"候选生成={'完成' if snapshot.idea.candidate_generation_complete else '待完成'}；"
+                f"新颖性={'完成' if snapshot.idea.novelty_check_complete else '待完成'}；"
+                f"独立评审={'完成' if snapshot.idea.independent_review_complete else '待完成'}；"
+                f"Meta-review={'完成' if snapshot.idea.meta_review_complete else '待完成'}"
+            ),
             (
                 "- 人工决策: 需要"
                 if snapshot.idea.human_decision_required

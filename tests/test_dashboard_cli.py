@@ -59,6 +59,10 @@ def test_dashboard_json_is_deterministic_and_read_only(
     assert payload["schema_version"] == 1
     assert payload["as_of"] == "2026-08-12"
     assert payload["project"]["slug"] == slug
+    assert payload["idea"]["candidate_generation_complete"] is False
+    assert payload["idea"]["novelty_check_complete"] is False
+    assert payload["idea"]["independent_review_complete"] is False
+    assert payload["idea"]["meta_review_complete"] is False
     assert len(payload["actions"]) <= 3
     assert _workspace_bytes(tmp_path) == before
 

@@ -293,6 +293,10 @@ def test_dashboard_reports_empty_and_active_idea_states(tmp_path: Path) -> None:
     assert empty.idea.candidate_count == 0
     assert empty.idea.selected_idea_ids == ()
     assert empty.idea.human_decision_required is False
+    assert empty.idea.candidate_generation_complete is False
+    assert empty.idea.novelty_check_complete is False
+    assert empty.idea.independent_review_complete is False
+    assert empty.idea.meta_review_complete is False
 
     created = advance_cycle(tmp_path, project.name, max_ideas=4, max_calls=6)
     active = build_project_dashboard(
@@ -303,6 +307,76 @@ def test_dashboard_reports_empty_and_active_idea_states(tmp_path: Path) -> None:
     assert active.idea.candidate_count == 0
     assert active.idea.calls_used == 0
     assert active.idea.max_calls == 6
+    assert active.idea.candidate_generation_complete is False
+    assert active.idea.novelty_check_complete is False
+    assert active.idea.independent_review_complete is False
+    assert active.idea.meta_review_complete is False
+
+
+def test_dashboard_exposes_each_validated_idea_gate(tmp_path: Path) -> None:
+    project, source_id = _write_ready_project(tmp_path)
+    created = advance_cycle(tmp_path, project.name)
+
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    assert advance_cycle(tmp_path, project.name).state == "novelty_check"
+    novelty = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    ).idea
+    assert novelty.candidate_generation_complete is True
+    assert novelty.novelty_check_complete is False
+    assert novelty.independent_review_complete is False
+    assert novelty.meta_review_complete is False
+
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    assert advance_cycle(tmp_path, project.name).state == "independent_review"
+    independent = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    ).idea
+    assert independent.candidate_generation_complete is True
+    assert independent.novelty_check_complete is True
+    assert independent.independent_review_complete is False
+    assert independent.meta_review_complete is False
+
+    _write_reviews(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "meta_review"
+    meta = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    ).idea
+    assert meta.candidate_generation_complete is True
+    assert meta.novelty_check_complete is True
+    assert meta.independent_review_complete is True
+    assert meta.meta_review_complete is False
+
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+    human = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    ).idea
+    assert human.candidate_generation_complete is True
+    assert human.novelty_check_complete is True
+    assert human.independent_review_complete is True
+    assert human.meta_review_complete is True
+
+
+def test_dashboard_does_not_report_gate_ready_when_frozen_artifact_changed(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_ready_project(tmp_path)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    assert advance_cycle(tmp_path, project.name).state == "novelty_check"
+    candidates = project / "cycles" / created.run_id / "candidates.yaml"
+    candidates.write_text(
+        candidates.read_text(encoding="utf-8") + "# changed after freeze\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="科研循环产物校验失败"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
 
 
 def test_dashboard_reports_human_decision_and_selected_idea(tmp_path: Path) -> None:
@@ -317,6 +391,10 @@ def test_dashboard_reports_human_decision_and_selected_idea(tmp_path: Path) -> N
     assert awaiting.idea.candidate_count == 1
     assert awaiting.idea.human_decision_required is True
     assert awaiting.idea.selected_idea_ids == ()
+    assert awaiting.idea.candidate_generation_complete is True
+    assert awaiting.idea.novelty_check_complete is True
+    assert awaiting.idea.independent_review_complete is True
+    assert awaiting.idea.meta_review_complete is True
 
     approve_active_cycle_idea(
         tmp_path,

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from research_os.cycle import load_active_cycle
+from research_os.cycle import load_active_cycle, validate_cycle_artifacts
 from research_os.dashboard_risks import (
     DashboardRisk,
     RiskFacts,
@@ -55,6 +55,10 @@ class IdeaStatus:
     human_decision_required: bool
     calls_used: int
     max_calls: int
+    candidate_generation_complete: bool
+    novelty_check_complete: bool
+    independent_review_complete: bool
+    meta_review_complete: bool
 
 
 @dataclass(frozen=True)
@@ -221,8 +225,20 @@ def _idea_status(
     allowed_source_ids: set[str],
 ) -> IdeaStatus:
     if not (project / "cycles").exists():
-        return IdeaStatus("", "not_started", 0, (), False, 0, 0)
-    _run_dir, manifest = load_active_cycle(workspace, slug)
+        return IdeaStatus(
+            run_id="",
+            cycle_state="not_started",
+            candidate_count=0,
+            selected_idea_ids=(),
+            human_decision_required=False,
+            calls_used=0,
+            max_calls=0,
+            candidate_generation_complete=False,
+            novelty_check_complete=False,
+            independent_review_complete=False,
+            meta_review_complete=False,
+        )
+    run_dir, manifest = load_active_cycle(workspace, slug)
     ideas = _safe_direct_directory(project, "ideas", required=True)
     if ideas is None:
         raise FileNotFoundError(project / "ideas")
@@ -238,12 +254,31 @@ def _idea_status(
             "Idea archive 属于不同课题: "
             f"expected {slug}, found {archive.project_slug}"
         )
+    artifact_issues = validate_cycle_artifacts(
+        run_dir,
+        manifest,
+        source_ids=allowed_source_ids,
+        archive_path=archive_path,
+    )
+    if artifact_issues:
+        raise ValueError(
+            "科研循环产物校验失败: " + "; ".join(artifact_issues)
+        )
     active_ideas = tuple(
         idea for idea in archive.ideas if idea.generated_by_run == manifest.run_id
     )
     selected = tuple(
         idea.idea_id for idea in active_ideas if idea.status == "selected"
     )
+    state_rank = {
+        "candidate_generation": 0,
+        "novelty_check": 1,
+        "independent_review": 2,
+        "meta_review": 3,
+        "awaiting_human_decision": 4,
+        "completed": 5,
+        "blocked": 0,
+    }[manifest.state]
     return IdeaStatus(
         run_id=manifest.run_id,
         cycle_state=manifest.state,
@@ -252,6 +287,10 @@ def _idea_status(
         human_decision_required=manifest.state == "awaiting_human_decision",
         calls_used=manifest.calls_used,
         max_calls=manifest.max_calls,
+        candidate_generation_complete=state_rank >= 1,
+        novelty_check_complete=state_rank >= 2,
+        independent_review_complete=state_rank >= 3,
+        meta_review_complete=state_rank >= 4,
     )
 
 
