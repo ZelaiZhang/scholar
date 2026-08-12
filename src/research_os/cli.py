@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from research_os.evidence import load_ledger, render_validation_report, validate_ledger
 from research_os.io import atomic_write_text
 from research_os.pdf import extract_pdf
 from research_os.project import create_project
@@ -59,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="确认输入只含允许外发的公开或脱敏资料",
     )
+
+    evidence_parser = subparsers.add_parser(
+        "validate-ledger", help="校验证据账本的来源、定位和状态"
+    )
+    evidence_parser.add_argument("ledger", type=Path)
+    evidence_parser.add_argument("--report", type=Path)
     return parser
 
 
@@ -109,6 +116,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"模型输出: {output}")
         print(f"调用记录: {provenance_path}")
         return 0
+    if args.command == "validate-ledger":
+        issues = validate_ledger(load_ledger(args.ledger))
+        report = render_validation_report(args.ledger, issues)
+        if args.report:
+            atomic_write_text(args.report.resolve(), report)
+            print(f"校验报告: {args.report.resolve()}")
+        else:
+            print(report, end="")
+        return 1 if issues else 0
     return 2
 
 
