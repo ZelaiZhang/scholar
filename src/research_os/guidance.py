@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from research_os.evidence import load_ledger, validate_ledger
-from research_os.project import load_project_manifest, template_content
+from research_os.project import load_project_manifest, template_content, validate_slug
 from research_os.sources import SourceRegistry
 
 
@@ -96,6 +96,7 @@ def _blocked_action(slug: str, reason: str) -> NextAction:
 
 
 def guide_project(workspace: Path, slug: str) -> GuideReport:
+    validate_slug(slug)
     workspace = workspace.resolve()
     project_path = workspace / "projects" / slug
     if not project_path.is_dir():

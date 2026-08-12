@@ -1,7 +1,15 @@
 from pathlib import Path
 
+import pytest
+
 from research_os.guidance import guide_project, render_guide
-from research_os.project import create_project, link_project_sources
+from research_os.project import (
+    InvalidSlugError,
+    ProjectManifest,
+    create_project,
+    link_project_sources,
+    write_project_manifest,
+)
 from research_os.sources import SourceRegistry
 
 
@@ -131,3 +139,18 @@ def test_render_guide_contains_exactly_one_next_action(tmp_path: Path) -> None:
 
     assert rendered.count("## 下一步") == 1
     assert "| 阶段 | 状态 | 说明 |" in rendered
+
+
+def test_guide_rejects_project_slug_path_traversal(tmp_path: Path) -> None:
+    escaped = tmp_path / "escaped"
+    escaped.mkdir()
+    write_project_manifest(
+        escaped,
+        ProjectManifest(1, "Escaped", "escaped", "", ()),
+    )
+    (escaped / "02-evidence-ledger.yaml").write_text(
+        "claims: []\n", encoding="utf-8"
+    )
+
+    with pytest.raises(InvalidSlugError):
+        guide_project(tmp_path, "../escaped")
