@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 import research_os.cli as cli_module
-from research_os.cli import build_parser
-from research_os.cli import main
+from research_os.cli import _configure_windows_utf8, build_parser, main
+from research_os.project import create_project, load_project_manifest
 from research_os.provider import CompletionResult
 
 
@@ -318,3 +318,179 @@ def test_model_call_refuses_provenance_collisions(
     if collision == "existing":
         assert provenance.read_text(encoding="utf-8") == "manual provenance"
     assert not output.exists()
+
+
+def test_cli_guide_recommends_project_creation_when_workspace_is_empty(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "projects").mkdir()
+
+    assert main(["guide", "--workspace", str(tmp_path)]) == 0
+
+    output = capsys.readouterr().out
+    assert "new-project" in output
+    assert "下一步" in output
+
+
+def test_cli_guide_selects_the_only_project(tmp_path: Path, capsys) -> None:
+    create_project(tmp_path, "A", "topic-a")
+
+    assert main(["guide", "--workspace", str(tmp_path)]) == 0
+
+    output = capsys.readouterr().out
+    assert "A · 科研驾驶舱" in output
+    assert "$research-project-init" in output
+
+
+def test_cli_guide_requires_explicit_project_when_multiple_exist(
+    tmp_path: Path, capsys
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    create_project(tmp_path, "B", "topic-b")
+
+    assert main(["guide", "--workspace", str(tmp_path)]) == 2
+
+    error = capsys.readouterr().err
+    assert "topic-a" in error
+    assert "topic-b" in error
+    assert "--project" in error
+
+
+def test_cli_batch_import_links_sources_to_project(tmp_path: Path) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text(
+        "doi:10.1000/a\narXiv:2401.01234\n", encoding="utf-8"
+    )
+
+    exit_code = main(
+        [
+            "add-sources",
+            str(manifest),
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 0
+    project = tmp_path / "projects" / "topic-a"
+    assert len(load_project_manifest(project).source_ids) == 2
+
+
+def test_cli_invalid_batch_does_not_partially_register_or_link(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text(
+        "doi:10.1000/good\nmissing.pdf\n", encoding="utf-8"
+    )
+
+    exit_code = main(
+        [
+            "add-sources",
+            str(manifest),
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+    assert load_project_manifest(project).source_ids == ()
+
+
+def test_cli_batch_rolls_back_registry_when_project_link_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    registry_path = tmp_path / "library" / "sources.jsonl"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        '{"canonical":"10.1000/existing","content_hash":null,'
+        '"external_api_allowed":false,"imported_at":"2026-01-01T00:00:00Z",'
+        '"kind":"doi","metadata_status":"unverified","notes":"manual",'
+        '"source_id":"src-existing"}\n',
+        encoding="utf-8",
+    )
+    before = registry_path.read_bytes()
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text("doi:10.1000/new\n", encoding="utf-8")
+    project_manifest_path = project / "project.yaml"
+    project_before = project_manifest_path.read_bytes()
+
+    def fail_after_partial_project_write(*_args) -> None:
+        project_manifest_path.write_text(
+            "schema_version: 1\nsource_ids: [src-corrupt]\n", encoding="utf-8"
+        )
+        raise OSError("simulated disk failure")
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", fail_after_partial_project_write
+    )
+
+    exit_code = main(
+        [
+            "add-sources",
+            str(manifest),
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert registry_path.read_bytes() == before
+    assert project_manifest_path.read_bytes() == project_before
+    assert load_project_manifest(project).source_ids == ()
+
+
+def test_cli_preflights_project_before_registering_single_source(
+    tmp_path: Path,
+) -> None:
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/should-not-write",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "missing-project",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+
+
+def test_cli_doctor_uses_report_exit_code(tmp_path: Path, capsys) -> None:
+    assert main(["doctor", "--workspace", str(tmp_path)]) == 1
+    assert "[FAIL]" in capsys.readouterr().out
+
+
+def test_windows_entrypoint_reconfigures_both_output_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeStream:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, str]] = []
+
+        def reconfigure(self, **kwargs: str) -> None:
+            self.calls.append(kwargs)
+
+    stdout = FakeStream()
+    stderr = FakeStream()
+    monkeypatch.setattr(cli_module.sys, "platform", "win32")
+    monkeypatch.setattr(cli_module.sys, "stdout", stdout)
+    monkeypatch.setattr(cli_module.sys, "stderr", stderr)
+
+    _configure_windows_utf8()
+
+    assert stdout.calls == [{"encoding": "utf-8", "errors": "replace"}]
+    assert stderr.calls == [{"encoding": "utf-8", "errors": "replace"}]

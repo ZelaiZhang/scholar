@@ -8,16 +8,18 @@ description: 登记、去重并分诊科研资料。用于用户提供本地 PDF
 ## 输入
 
 - 接收本地文件、DOI、arXiv 标识或公开 URL。
-- 读取 `library/sources.jsonl` 与目标课题的 `01-search-log.md`。
+- 接收每行一个来源的 UTF-8 文本清单；允许空行和 `#` 注释。
+- 读取 `library/sources.jsonl`、目标课题的 `project.yaml` 与 `01-search-log.md`。
 
 ## 流程
 
 1. 检查材料是否含可识别健康信息；发现后停止，不复制、不外发。
-2. 对每个来源运行 `python -m research_os add-source "来源"`。
-3. 仅在用户明确允许时添加 `--allow-external-api`；默认保持禁止外发。
-4. 根据标题、摘要或可见内容评估相关性、证据类型、阅读优先级和排除理由。
-5. 在检索日志记录查询式、日期、纳入和排除理由。
-6. 返回“优先精读、背景阅读、排除、待获取全文”四类清单供人工复核。
+2. 目标课题已知时，所有登记命令必须带 `--project` 和真实 slug。例如单篇运行 `python -m research_os add-source "来源" --project medical-reasoning`。
+3. 用户提供清单时只运行一次 `python -m research_os add-sources "sources.txt" --project medical-reasoning`；任一行失败则整批失败，不改为逐条导入，不报告部分成功。
+4. 仅在用户明确允许时添加 `--allow-external-api`；默认保持禁止外发。
+5. 根据标题、摘要或可见内容评估相关性、证据类型、阅读优先级和排除理由。
+6. 在检索日志记录查询式、日期、纳入和排除理由。
+7. 返回“优先精读、背景阅读、排除、待获取全文”四类清单供人工复核。
 
 ## 质量门禁
 
@@ -25,4 +27,5 @@ description: 登记、去重并分诊科研资料。用于用户提供本地 PDF
 - 标明分诊依据是标题、摘要还是全文。
 - 保留人工笔记，不因重复导入而覆盖。
 - 对无法访问的资料报告失败原因，不生成伪论文卡片。
-
+- 目标课题已知时，确认所有返回的 `source_id` 已出现在该课题 `project.yaml` 后才能报告登记完成。
+- 清单失败时确认 `library/sources.jsonl` 与 `project.yaml` 均未发生部分写入。

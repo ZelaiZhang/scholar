@@ -6,12 +6,23 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from research_os.doctor import render_doctor, run_doctor
 from research_os.evidence import load_ledger, render_validation_report, validate_ledger
-from research_os.io import atomic_write_text
+from research_os.guidance import guide_project, render_guide
+from research_os.io import atomic_write_bytes, atomic_write_text
 from research_os.pdf import extract_pdf
-from research_os.project import create_project
+from research_os.project import (
+    create_project,
+    link_project_sources,
+    load_project_manifest,
+    validate_slug,
+)
 from research_os.provider import OpenAICompatibleProvider
-from research_os.sources import SourceRegistry, load_authorized_external_texts
+from research_os.sources import (
+    SourceRegistry,
+    load_authorized_external_texts,
+    load_source_manifest,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +32,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="只读检查工作区、来源、技能和中文终端"
+    )
+    doctor_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    guide_parser = subparsers.add_parser(
+        "guide", help="显示课题状态并只推荐一个下一步"
+    )
+    guide_parser.add_argument("--project", help="课题 slug；只有一个课题时可省略")
+    guide_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
     project_parser = subparsers.add_parser("new-project", help="创建规范科研课题")
     project_parser.add_argument("--title", required=True, help="中文或英文课题标题")
     project_parser.add_argument("--slug", required=True, help="小写英文课题标识")
@@ -28,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     source_parser = subparsers.add_parser("add-source", help="登记并去重科研资料")
     source_parser.add_argument("source", help="本地文件、DOI、arXiv 或 URL")
+    source_parser.add_argument("--project", help="把来源关联到指定课题 slug")
     source_parser.add_argument("--notes", default="", help="只在首次登记时保存的人工笔记")
     source_parser.add_argument(
         "--allow-external-api",
@@ -35,6 +58,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="明确允许把此公开来源发送给外部模型",
     )
     source_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    sources_parser = subparsers.add_parser(
+        "add-sources", help="从 UTF-8 清单原子批量登记科研资料"
+    )
+    sources_parser.add_argument("manifest", type=Path, help="每行一个来源的 UTF-8 文本")
+    sources_parser.add_argument("--project", help="把全部来源关联到指定课题 slug")
+    sources_parser.add_argument("--notes", default="", help="只对首次登记来源保存的人工笔记")
+    sources_parser.add_argument(
+        "--allow-external-api",
+        action="store_true",
+        help="明确允许把清单内公开来源发送给外部模型",
+    )
+    sources_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     pdf_parser = subparsers.add_parser(
         "extract-pdf", help="提取 PDF 文本并保留页码边界"
@@ -78,19 +114,149 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _preflight_project(workspace: Path, slug: str | None) -> None:
+    if slug is None:
+        return
+    validate_slug(slug)
+    path = workspace.resolve() / "projects" / slug
+    if not path.is_dir():
+        raise FileNotFoundError(f"课题不存在: {path}")
+    load_project_manifest(path, allow_legacy=True)
+
+
+def _project_slugs(workspace: Path) -> list[str]:
+    root = workspace.resolve() / "projects"
+    if not root.is_dir():
+        return []
+    return sorted(path.name for path in root.iterdir() if path.is_dir())
+
+
+def _empty_workspace_guide() -> str:
+    return """# Research OS · 科研驾驶舱
+
+## 下一步
+
+原因：当前工作区还没有课题，先建立一个可追踪的研究目录。
+
+```text
+research-os new-project --title "你的课题标题" --slug your-topic
+```
+
+"""
+
+
+def _snapshot_file(path: Path) -> bytes | None:
+    return path.read_bytes() if path.exists() else None
+
+
+def _restore_file(path: Path, snapshot: bytes | None) -> None:
+    if snapshot is None:
+        path.unlink(missing_ok=True)
+    else:
+        atomic_write_bytes(path, snapshot)
+
+
+def _link_sources_transactionally(
+    workspace: Path,
+    slug: str | None,
+    source_ids: list[str],
+    registry_path: Path,
+    registry_snapshot: bytes | None,
+) -> None:
+    if slug is None:
+        return
+    project_manifest = workspace / "projects" / slug / "project.yaml"
+    project_snapshot = _snapshot_file(project_manifest)
+    try:
+        link_project_sources(workspace, slug, source_ids)
+    except BaseException:
+        rollback_errors: list[OSError] = []
+        for path, snapshot in (
+            (registry_path, registry_snapshot),
+            (project_manifest, project_snapshot),
+        ):
+            try:
+                _restore_file(path, snapshot)
+            except OSError as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            raise RuntimeError(
+                "来源关联失败，且事务回滚失败；立即运行 research-os doctor 检查工作区: "
+                + "; ".join(str(error) for error in rollback_errors)
+            )
+        raise
+
+
 def _run(args: argparse.Namespace) -> int:
+    if args.command == "doctor":
+        report = run_doctor(
+            args.workspace,
+            stdout_encoding=getattr(sys.stdout, "encoding", None),
+        )
+        print(render_doctor(report), end="")
+        return report.exit_code
+    if args.command == "guide":
+        slug = args.project
+        if slug is None:
+            slugs = _project_slugs(args.workspace)
+            if not slugs:
+                print(_empty_workspace_guide(), end="")
+                return 0
+            if len(slugs) > 1:
+                raise ValueError(
+                    "存在多个课题，请使用 --project 指定: " + ", ".join(slugs)
+                )
+            slug = slugs[0]
+        print(render_guide(guide_project(args.workspace, slug)), end="")
+        return 0
     if args.command == "new-project":
         path = create_project(args.workspace, args.title, args.slug)
         print(f"已创建课题: {path}")
+        print(f"下一步: research-os guide --project {args.slug}")
         return 0
     if args.command == "add-source":
-        registry = SourceRegistry(args.workspace.resolve() / "library" / "sources.jsonl")
+        workspace = args.workspace.resolve()
+        _preflight_project(workspace, args.project)
+        registry = SourceRegistry(workspace / "library" / "sources.jsonl")
+        registry_snapshot = _snapshot_file(registry.path)
         record = registry.add(
             args.source,
             notes=args.notes,
             external_api_allowed=args.allow_external_api,
         )
-        print(f"已登记来源: {record.source_id} ({record.kind})")
+        _link_sources_transactionally(
+            workspace,
+            args.project,
+            [record.source_id],
+            registry.path,
+            registry_snapshot,
+        )
+        suffix = f"，已关联课题 {args.project}" if args.project else ""
+        print(f"已登记来源: {record.source_id} ({record.kind}){suffix}")
+        return 0
+    if args.command == "add-sources":
+        workspace = args.workspace.resolve()
+        _preflight_project(workspace, args.project)
+        values = load_source_manifest(args.manifest.resolve())
+        registry = SourceRegistry(workspace / "library" / "sources.jsonl")
+        registry_snapshot = _snapshot_file(registry.path)
+        result = registry.add_many(
+            values,
+            notes=args.notes,
+            external_api_allowed=args.allow_external_api,
+        )
+        _link_sources_transactionally(
+            workspace,
+            args.project,
+            list(dict.fromkeys(record.source_id for record in result.records)),
+            registry.path,
+            registry_snapshot,
+        )
+        suffix = f"，关联课题 {args.project}" if args.project else ""
+        print(
+            f"批量登记完成：新增 {result.added}，重复 {result.duplicates}，"
+            f"升级外发许可 {result.authorizations_upgraded}{suffix}"
+        )
         return 0
     if args.command == "extract-pdf":
         if args.pdf.resolve() == args.output.resolve():
@@ -165,10 +331,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return _run(args)
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         print(f"错误: {exc}", file=sys.stderr)
         return 2
 
 
+def _configure_windows_utf8() -> None:
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def entrypoint() -> None:
+    _configure_windows_utf8()
     raise SystemExit(main())
