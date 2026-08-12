@@ -410,6 +410,15 @@ def approve_idea(
         raise ValueError(f"Idea 不存在: {idea_id}")
     if record.status != "shortlisted":
         raise ValueError("只有 shortlisted Idea 可以人工批准")
+    if (
+        record.novelty.status != "checked"
+        or not record.novelty.queries
+        or not record.novelty.nearest_source_ids
+        or not record.novelty.differences
+    ):
+        raise ValueError(
+            "shortlisted Idea must have a complete novelty check before approval"
+        )
     decision = ResearcherDecision(
         actor="researcher",
         reason=clean_reason,

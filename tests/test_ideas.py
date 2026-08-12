@@ -23,6 +23,14 @@ def make_idea(
     evidence_source_ids: tuple[str, ...] = ("src-a",),
     novelty: NoveltyEvidence | None = None,
 ) -> IdeaRecord:
+    if novelty is None and status in {"reviewed", "shortlisted", "selected"}:
+        novelty = NoveltyEvidence(
+            status="checked",
+            queries=("counterevidence medical reasoning",),
+            nearest_source_ids=("src-a",),
+            differences="Uses a stricter evidence gate.",
+            unresolved_overlap="",
+        )
     return IdeaRecord(
         idea_id=idea_id,
         parent_ids=(),
@@ -113,6 +121,24 @@ def test_only_researcher_approval_can_select_shortlisted_idea() -> None:
     assert record.researcher_decision is not None
     assert record.researcher_decision.actor == "researcher"
     assert record.researcher_decision.idea_hash == idea_content_hash(record)
+
+
+def test_researcher_approval_rejects_shortlist_without_novelty_evidence() -> None:
+    pending = NoveltyEvidence(
+        status="pending",
+        queries=(),
+        nearest_source_ids=(),
+        differences="",
+        unresolved_overlap="Search required.",
+    )
+    archive = IdeaArchive(
+        1,
+        "topic-a",
+        (make_idea(status="shortlisted", novelty=pending),),
+    )
+
+    with pytest.raises(ValueError, match="novelty|新颖"):
+        approve_idea(archive, "idea-0001", reason="Approve anyway")
 
 
 def test_selected_idea_requires_valid_researcher_hash(tmp_path: Path) -> None:
