@@ -1,5 +1,7 @@
 import json
+import os
 import shutil
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -332,6 +334,57 @@ def test_meeting_brief_rejects_same_run_approval_after_dashboard_snapshot(
     )
 
     with pytest.raises(ValueError, match="active cycle changed"):
+        build_meeting_brief(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
+def test_meeting_brief_rejects_junction_backed_review_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(tmp_path, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+
+    reviews = project / "cycles" / created.run_id / "reviews"
+    outside = tmp_path / "outside-reviews"
+    real_build_dashboard = meeting_brief_module.build_project_dashboard
+
+    def replace_reviews_after_snapshot(*args: object, **kwargs: object) -> object:
+        snapshot = real_build_dashboard(*args, **kwargs)
+        reviews.replace(outside)
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["cmd", "/c", "mklink", "/J", str(reviews), str(outside)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                reviews.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"cannot create a directory link in this environment: {exc}")
+        return snapshot
+
+    monkeypatch.setattr(
+        meeting_brief_module,
+        "build_project_dashboard",
+        replace_reviews_after_snapshot,
+    )
+
+    with pytest.raises(ValueError, match="artifact validation failed"):
         build_meeting_brief(
             tmp_path,
             project.name,

@@ -160,12 +160,41 @@ def _direct_directory(parent: Path, name: str, *, create: bool) -> Path:
     return resolved
 
 
+def _direct_file(parent: Path, name: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", name):
+        raise ValueError(f"unsafe internal file name: {name}")
+    candidate = parent / name
+    if _is_link_or_reparse_point(candidate):
+        raise ValueError(f"internal file cannot be a link or reparse point: {candidate}")
+    resolved = candidate.resolve()
+    if resolved.parent != parent.resolve():
+        raise ValueError(f"internal file escapes its directory: {resolved}")
+    if not resolved.is_file():
+        raise ValueError(f"expected an internal file: {resolved}")
+    return resolved
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha256_direct_text(
+    path: Path,
+    *,
+    parent: Path,
+    parent_identity: tuple[int, int],
+) -> str:
+    content = read_stable_direct_text(
+        path,
+        expected_parent=parent,
+        expected_parent_identity=parent_identity,
+        max_bytes=MAX_ARTIFACT_BYTES,
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _sha256_text(content: str) -> str:
@@ -1006,10 +1035,17 @@ def _load_candidates(
     *,
     manifest: CycleManifest,
     source_ids: set[str],
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
 ) -> IdeaArchive:
-    if path.stat().st_size > MAX_ARTIFACT_BYTES:
+    if path.lstat().st_size > MAX_ARTIFACT_BYTES:
         raise ValueError("candidate artifact exceeds the 1 MiB limit")
-    archive = load_idea_archive(path, allowed_source_ids=source_ids)
+    archive = load_idea_archive(
+        path,
+        allowed_source_ids=source_ids,
+        expected_parent=expected_parent,
+        expected_parent_identity=expected_parent_identity,
+    )
     if archive.project_slug != manifest.project_slug:
         raise ValueError("candidate artifact belongs to a different project")
     if not archive.ideas:
@@ -1125,12 +1161,25 @@ def _blocked(
     )
 
 
-def _reviews_digest(folder: Path) -> str:
-    parts = [f"{role}:{_sha256_file(folder / f'{role}.json')}" for role in (
-        "novelty",
-        "methods",
-        "medical-safety",
-    )]
+def _reviews_digest(
+    folder: Path,
+    *,
+    expected_identity: tuple[int, int] | None = None,
+) -> str:
+    if _is_link_or_reparse_point(folder):
+        raise ValueError(f"reviews directory cannot be a link or reparse point: {folder}")
+    if expected_identity is None:
+        expected_identity = _directory_identity(folder)
+    _assert_directory_identity(folder, expected_identity, context="reviews")
+    parts: list[str] = []
+    for role in ("novelty", "methods", "medical-safety"):
+        digest = _sha256_direct_text(
+            _direct_file(folder, f"{role}.json"),
+            parent=folder,
+            parent_identity=expected_identity,
+        )
+        parts.append(f"{role}:{digest}")
+    _assert_directory_identity(folder, expected_identity, context="reviews")
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -1144,14 +1193,30 @@ def validate_cycle_artifacts(
     """Validate state-bound cycle artifacts without changing the run."""
     issues: list[str] = []
     candidate_ids: set[str] = set()
-    candidates_path = run_dir / "candidates.yaml"
+    try:
+        if _is_link_or_reparse_point(run_dir):
+            raise ValueError(f"run directory cannot be a link or reparse point: {run_dir}")
+        run_identity = _directory_identity(run_dir)
+    except (OSError, ValueError) as exc:
+        return (f"run: {exc}",)
     if manifest.candidate_sha256:
         try:
-            if _sha256_file(candidates_path) != manifest.candidate_sha256:
+            _assert_directory_identity(run_dir, run_identity, context="run")
+            candidates_path = _direct_file(run_dir, "candidates.yaml")
+            if _sha256_direct_text(
+                candidates_path,
+                parent=run_dir,
+                parent_identity=run_identity,
+            ) != manifest.candidate_sha256:
                 raise ValueError("candidate hash does not match manifest")
             candidates = _load_candidates(
-                candidates_path, manifest=manifest, source_ids=source_ids
+                candidates_path,
+                manifest=manifest,
+                source_ids=source_ids,
+                expected_parent=run_dir,
+                expected_parent_identity=run_identity,
             )
+            _assert_directory_identity(run_dir, run_identity, context="run")
             if manifest.state in {
                 "independent_review",
                 "meta_review",
@@ -1167,28 +1232,44 @@ def validate_cycle_artifacts(
             issues.append(f"candidates: {exc}")
     if manifest.reviews_sha256:
         try:
-            reviews_dir = run_dir / "reviews"
-            if _reviews_digest(reviews_dir) != manifest.reviews_sha256:
+            _assert_directory_identity(run_dir, run_identity, context="run")
+            reviews_dir = _direct_directory(run_dir, "reviews", create=False)
+            reviews_identity = _directory_identity(reviews_dir)
+            if _reviews_digest(
+                reviews_dir,
+                expected_identity=reviews_identity,
+            ) != manifest.reviews_sha256:
                 raise ValueError("review bundle hash does not match manifest")
             if candidate_ids:
                 load_review_bundle(
                     reviews_dir,
                     expected_idea_ids=candidate_ids,
                     expected_run_id=manifest.run_id,
+                    expected_parent_identity=reviews_identity,
                 )
+            _assert_directory_identity(reviews_dir, reviews_identity, context="reviews")
+            _assert_directory_identity(run_dir, run_identity, context="run")
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(f"reviews: {exc}")
     if manifest.meta_review_sha256:
         try:
-            meta_path = run_dir / "meta-review.json"
-            if _sha256_file(meta_path) != manifest.meta_review_sha256:
+            _assert_directory_identity(run_dir, run_identity, context="run")
+            meta_path = _direct_file(run_dir, "meta-review.json")
+            if _sha256_direct_text(
+                meta_path,
+                parent=run_dir,
+                parent_identity=run_identity,
+            ) != manifest.meta_review_sha256:
                 raise ValueError("meta-review hash does not match manifest")
             if candidate_ids:
                 load_meta_review(
                     meta_path,
                     expected_idea_ids=candidate_ids,
                     expected_run_id=manifest.run_id,
+                    expected_parent=run_dir,
+                    expected_parent_identity=run_identity,
                 )
+            _assert_directory_identity(run_dir, run_identity, context="run")
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(f"meta-review: {exc}")
     if manifest.state == "completed":

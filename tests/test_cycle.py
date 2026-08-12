@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from research_os.cycle import (
     advance_cycle,
     load_cycle_manifest,
     save_cycle_manifest,
+    validate_cycle_artifacts,
 )
 from research_os.ideas import (
     IdeaArchive,
@@ -117,6 +119,62 @@ def _external_project(tmp_path: Path) -> Path:
     )
     link_project_sources(tmp_path, "topic-a", [record.source_id])
     return project
+
+
+def test_cycle_artifact_validation_rejects_reviews_replaced_mid_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id, checked=False)
+    advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id, checked=True)
+    advance_cycle(tmp_path, "topic-a")
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, "topic-a")
+    _write_meta(project, created.run_id)
+    assert advance_cycle(tmp_path, "topic-a").state == "awaiting_human_decision"
+
+    run_dir = project / "cycles" / created.run_id
+    reviews = run_dir / "reviews"
+    outside = tmp_path / "original-reviews"
+    real_hash = cycle_module._sha256_direct_text
+    replaced = False
+
+    def replace_after_first_review(
+        path: Path,
+        *,
+        parent: Path,
+        parent_identity: tuple[int, int],
+    ) -> str:
+        nonlocal replaced
+        digest = real_hash(
+            path,
+            parent=parent,
+            parent_identity=parent_identity,
+        )
+        if parent == reviews and not replaced:
+            replaced = True
+            reviews.replace(outside)
+            shutil.copytree(outside, reviews)
+        return digest
+
+    monkeypatch.setattr(
+        cycle_module,
+        "_sha256_direct_text",
+        replace_after_first_review,
+    )
+
+    issues = validate_cycle_artifacts(
+        run_dir,
+        load_cycle_manifest(run_dir / "manifest.yaml"),
+        source_ids={"src-a"},
+        archive_path=project / "ideas" / "archive.yaml",
+    )
+
+    assert replaced is True
+    assert any(issue.startswith("reviews:") for issue in issues)
 
 
 def _candidate_json(run_id: str, source_id: str) -> str:

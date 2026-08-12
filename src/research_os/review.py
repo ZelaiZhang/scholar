@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from research_os.io import read_stable_direct_text
+
 
 MAX_REVIEW_BYTES = 1024 * 1024
 REVIEW_ROLES = ("novelty", "methods", "medical-safety")
@@ -103,18 +105,28 @@ def _require_string_tuple(raw: object, *, context: str) -> tuple[str, ...]:
     return values
 
 
-def _read_json_object(path: Path, *, context: str) -> dict[str, object]:
+def _read_json_object(
+    path: Path,
+    *,
+    context: str,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> dict[str, object]:
     try:
-        size = path.stat().st_size
+        if path.lstat().st_size > MAX_REVIEW_BYTES:
+            raise ValueError(f"{context} exceeds the 1 MiB limit")
     except OSError as exc:
         raise ValueError(f"{context} cannot be read: {path}") from exc
-    if size > MAX_REVIEW_BYTES:
-        raise ValueError(f"{context} exceeds the 1 MiB limit")
     try:
-        text = path.read_bytes().decode("utf-8", errors="strict")
-    except UnicodeDecodeError as exc:
+        text = read_stable_direct_text(
+            path,
+            expected_parent=expected_parent,
+            expected_parent_identity=expected_parent_identity,
+            max_bytes=MAX_REVIEW_BYTES,
+        )
+    except UnicodeError as exc:
         raise ValueError(f"{context} must be UTF-8") from exc
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise ValueError(f"{context} cannot be read: {path}") from exc
     try:
         raw = json.loads(text)
@@ -163,10 +175,17 @@ def load_independent_review(
     expected_role: str,
     expected_idea_ids: set[str],
     expected_run_id: str,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
 ) -> IndependentReview:
     if expected_role not in REVIEW_ROLES:
         raise ValueError(f"unknown expected review role: {expected_role}")
-    raw = _read_json_object(path, context=f"{expected_role} review")
+    raw = _read_json_object(
+        path,
+        context=f"{expected_role} review",
+        expected_parent=expected_parent,
+        expected_parent_identity=expected_parent_identity,
+    )
     _require_exact_keys(raw, REVIEW_KEYS, context="independent review")
     _require_schema_version(raw["schema_version"], context="independent review")
     role = _require_string(raw["role"], context="review role")
@@ -201,7 +220,11 @@ def load_independent_review(
 
 
 def load_review_bundle(
-    folder: Path, *, expected_idea_ids: set[str], expected_run_id: str
+    folder: Path,
+    *,
+    expected_idea_ids: set[str],
+    expected_run_id: str,
+    expected_parent_identity: tuple[int, int] | None = None,
 ) -> ReviewBundle:
     reviews: dict[str, IndependentReview] = {}
     for role in REVIEW_ROLES:
@@ -213,6 +236,8 @@ def load_review_bundle(
             expected_role=role,
             expected_idea_ids=expected_idea_ids,
             expected_run_id=expected_run_id,
+            expected_parent=folder,
+            expected_parent_identity=expected_parent_identity,
         )
     run_ids = {review.run_id for review in reviews.values()}
     if len(run_ids) != 1:
@@ -229,8 +254,15 @@ def load_meta_review(
     *,
     expected_idea_ids: set[str],
     expected_run_id: str,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
 ) -> MetaReview:
-    raw = _read_json_object(path, context="meta-review")
+    raw = _read_json_object(
+        path,
+        context="meta-review",
+        expected_parent=expected_parent,
+        expected_parent_identity=expected_parent_identity,
+    )
     _require_exact_keys(raw, META_REVIEW_KEYS, context="meta-review")
     _require_schema_version(raw["schema_version"], context="meta-review")
     run_id = _require_string(raw["run_id"], context="run_id")
