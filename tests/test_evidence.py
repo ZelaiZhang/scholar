@@ -98,3 +98,36 @@ def test_load_ledger_rejects_non_mapping(tmp_path: Path) -> None:
 
     with pytest.raises(LedgerFormatError):
         load_ledger(path)
+
+
+def test_missing_claim_id_is_an_error_even_when_fact_is_otherwise_valid() -> None:
+    issues = validate_ledger({"claims": [claim(claim_id="")]})
+
+    assert any(issue.code == "missing_claim_id" for issue in issues)
+
+
+def test_source_ids_are_resolved_and_opposition_is_validated() -> None:
+    ledger = {
+        "claims": [
+            claim(
+                status="conflicted",
+                support=[{"source_id": "src-known", "locator": "p. 2"}],
+                opposition=[{"source_id": "src-invented", "locator": ""}],
+            )
+        ]
+    }
+
+    issues = validate_ledger(ledger, known_source_ids={"src-known"})
+    codes = {issue.code for issue in issues}
+
+    assert "unknown_source_id" in codes
+    assert "missing_locator" in codes
+
+
+def test_conflicted_claim_requires_opposition_evidence() -> None:
+    issues = validate_ledger(
+        {"claims": [claim(status="conflicted", opposition=[])]},
+        known_source_ids={"src-1"},
+    )
+
+    assert any(issue.code == "missing_opposition" for issue in issues)

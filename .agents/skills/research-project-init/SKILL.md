@@ -8,7 +8,7 @@ description: 创建证据优先的新科研课题工作区。用于用户提出�
 ## 输入
 
 - 获取课题标题、英文 slug、初步方向和已知约束。
-- 读取根目录 `AGENTS.md`、`config/research.yaml` 与 `templates/research-brief.md`。
+- 读取根目录 `AGENTS.md`、`config/research.yaml` 与 `src/research_os/templates/research-brief.md`。
 
 ## 流程
 
@@ -30,4 +30,3 @@ description: 创建证据优先的新科研课题工作区。用于用户提出�
 - 明确区分事实、推断与假设。
 - 确认未处理可识别健康信息。
 - 确认 `00-research-brief.md` 含失败判据和人工确认项。
-

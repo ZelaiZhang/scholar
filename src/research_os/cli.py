@@ -11,7 +11,7 @@ from research_os.io import atomic_write_text
 from research_os.pdf import extract_pdf
 from research_os.project import create_project
 from research_os.provider import OpenAICompatibleProvider
-from research_os.sources import SourceRegistry
+from research_os.sources import SourceRegistry, authorize_external_files
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     model_parser.add_argument("--system", type=Path, required=True)
     model_parser.add_argument("--user", type=Path, required=True)
     model_parser.add_argument("--output", type=Path, required=True)
+    model_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+    model_parser.add_argument(
+        "--source-id",
+        action="append",
+        required=True,
+        help="参与本次请求且已显式授权外发的来源 ID；多个来源重复传入",
+    )
     model_parser.add_argument("--temperature", type=float, default=0.1)
     model_parser.add_argument("--timeout", type=float, default=60.0)
     model_parser.add_argument(
@@ -67,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evidence_parser.add_argument("ledger", type=Path)
     evidence_parser.add_argument("--report", type=Path)
+    evidence_parser.add_argument("--workspace", type=Path, default=Path.cwd())
     return parser
 
 
@@ -85,6 +93,8 @@ def _run(args: argparse.Namespace) -> int:
         print(f"已登记来源: {record.source_id} ({record.kind})")
         return 0
     if args.command == "extract-pdf":
+        if args.pdf.resolve() == args.output.resolve():
+            raise ValueError("输出路径不能与输入 PDF 相同")
         if args.output.exists() and not args.force:
             raise FileExistsError(f"输出已存在，使用 --force 才能覆盖: {args.output}")
         result = extract_pdf(args.pdf)
@@ -94,6 +104,11 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "model-call":
         if args.output.exists():
             raise FileExistsError(f"模型输出已存在，不自动覆盖: {args.output}")
+        authorize_external_files(
+            args.workspace.resolve() / "library" / "sources.jsonl",
+            [args.system, args.user],
+            args.source_id,
+        )
         provider = OpenAICompatibleProvider(
             args.base_url,
             args.model,
@@ -117,11 +132,22 @@ def _run(args: argparse.Namespace) -> int:
         print(f"调用记录: {provenance_path}")
         return 0
     if args.command == "validate-ledger":
-        issues = validate_ledger(load_ledger(args.ledger))
+        registry = SourceRegistry(
+            args.workspace.resolve() / "library" / "sources.jsonl"
+        )
+        known_source_ids = {record.source_id for record in registry.records()}
+        issues = validate_ledger(
+            load_ledger(args.ledger), known_source_ids=known_source_ids
+        )
         report = render_validation_report(args.ledger, issues)
         if args.report:
-            atomic_write_text(args.report.resolve(), report)
-            print(f"校验报告: {args.report.resolve()}")
+            report_path = args.report.resolve()
+            if report_path == args.ledger.resolve():
+                raise ValueError("校验报告不能覆盖证据账本")
+            if report_path.exists():
+                raise FileExistsError(f"校验报告已存在，不自动覆盖: {report_path}")
+            atomic_write_text(report_path, report)
+            print(f"校验报告: {report_path}")
         else:
             print(report, end="")
         return 1 if issues else 0

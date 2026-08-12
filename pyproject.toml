@@ -20,12 +20,15 @@ dev = ["pytest>=8.0"]
 research-os = "research_os.cli:entrypoint"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+packages = ["research_os", "research_os.templates"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools.package-dir]
+research_os = "src/research_os"
+"research_os.templates" = "src/research_os/templates"
+
+[tool.setuptools.package-data]
+"research_os.templates" = ["*.md", "*.yaml"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
-

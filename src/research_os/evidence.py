@@ -35,7 +35,11 @@ def load_ledger(path: Path) -> dict[str, object]:
     return loaded
 
 
-def validate_ledger(ledger: dict[str, object]) -> list[ValidationIssue]:
+def validate_ledger(
+    ledger: dict[str, object],
+    *,
+    known_source_ids: set[str] | None = None,
+) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     raw_claims = ledger.get("claims", [])
     if not isinstance(raw_claims, list):
@@ -51,14 +55,22 @@ def validate_ledger(ledger: dict[str, object]) -> list[ValidationIssue]:
             )
             continue
 
-        claim_id = str(raw_claim.get("claim_id", "")).strip() or f"item-{index}"
-        if claim_id in seen:
+        raw_claim_id = str(raw_claim.get("claim_id", "")).strip()
+        claim_id = raw_claim_id or f"item-{index}"
+        if not raw_claim_id:
+            issues.append(
+                ValidationIssue(
+                    "missing_claim_id", claim_id, "claim 必须有稳定且非空的 claim_id"
+                )
+            )
+        if raw_claim_id and raw_claim_id in seen:
             issues.append(
                 ValidationIssue(
                     "duplicate_claim_id", claim_id, "claim_id 在账本中重复"
                 )
             )
-        seen.add(claim_id)
+        if raw_claim_id:
+            seen.add(raw_claim_id)
 
         if not str(raw_claim.get("statement", "")).strip():
             issues.append(
@@ -95,13 +107,21 @@ def validate_ledger(ledger: dict[str, object]) -> list[ValidationIssue]:
                 )
             )
 
-        support = raw_claim.get("support", [])
-        if not isinstance(support, list):
-            issues.append(
-                ValidationIssue("invalid_support", claim_id, "support 必须是列表")
-            )
-            support = []
+        lanes: dict[str, list[object]] = {}
+        for lane_name in ("support", "opposition"):
+            lane = raw_claim.get(lane_name, [])
+            if not isinstance(lane, list):
+                issues.append(
+                    ValidationIssue(
+                        f"invalid_{lane_name}",
+                        claim_id,
+                        f"{lane_name} 必须是列表",
+                    )
+                )
+                lane = []
+            lanes[lane_name] = lane
 
+        support = lanes["support"]
         if claim_type == "fact" and status == "verified" and not support:
             issues.append(
                 ValidationIssue(
@@ -109,31 +129,48 @@ def validate_ledger(ledger: dict[str, object]) -> list[ValidationIssue]:
                 )
             )
 
-        for source_index, source in enumerate(support, 1):
-            if not isinstance(source, dict):
-                issues.append(
-                    ValidationIssue(
-                        "invalid_source",
-                        claim_id,
-                        f"支持来源 {source_index} 必须是 mapping",
-                    )
+        if status == "conflicted" and not lanes["opposition"]:
+            issues.append(
+                ValidationIssue(
+                    "missing_opposition", claim_id, "冲突状态必须记录反对证据"
                 )
-                continue
-            if not str(source.get("source_id", "")).strip():
-                issues.append(
-                    ValidationIssue(
-                        "missing_source_id",
-                        claim_id,
-                        f"支持来源 {source_index} 缺少 source_id",
+            )
+
+        for lane_name, lane in lanes.items():
+            lane_label = "支持" if lane_name == "support" else "反对"
+            for source_index, source in enumerate(lane, 1):
+                if not isinstance(source, dict):
+                    issues.append(
+                        ValidationIssue(
+                            "invalid_source",
+                            claim_id,
+                            f"{lane_label}来源 {source_index} 必须是 mapping",
+                        )
                     )
-                )
-            if claim_type == "fact" and status == "verified":
+                    continue
+                source_id = str(source.get("source_id", "")).strip()
+                if not source_id:
+                    issues.append(
+                        ValidationIssue(
+                            "missing_source_id",
+                            claim_id,
+                            f"{lane_label}来源 {source_index} 缺少 source_id",
+                        )
+                    )
+                elif known_source_ids is not None and source_id not in known_source_ids:
+                    issues.append(
+                        ValidationIssue(
+                            "unknown_source_id",
+                            claim_id,
+                            f"{lane_label}来源未登记: {source_id}",
+                        )
+                    )
                 if not str(source.get("locator", "")).strip():
                     issues.append(
                         ValidationIssue(
                             "missing_locator",
                             claim_id,
-                            f"支持来源 {source_index} 缺少页码、章节或段落定位",
+                            f"{lane_label}来源 {source_index} 缺少页码、章节或段落定位",
                         )
                     )
     return issues
@@ -152,4 +189,3 @@ def render_validation_report(
             for issue in issues
         )
     return "\n".join(lines) + "\n"
-

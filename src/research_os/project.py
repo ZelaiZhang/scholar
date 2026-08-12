@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from importlib import resources
 from pathlib import Path
 
 from research_os.io import atomic_write_text
@@ -31,8 +32,12 @@ def validate_slug(slug: str) -> None:
         raise InvalidSlugError("slug 只能包含小写字母、数字和单个连字符")
 
 
-def default_template_root() -> Path:
-    return Path(__file__).resolve().parents[2] / "templates"
+def template_content(name: str, template_root: Path | None) -> str:
+    if template_root is not None:
+        return (template_root / name).read_text(encoding="utf-8")
+    return resources.files("research_os.templates").joinpath(name).read_text(
+        encoding="utf-8"
+    )
 
 
 def create_project(
@@ -49,12 +54,10 @@ def create_project(
     if destination.exists():
         raise ProjectExistsError(f"课题已存在: {destination}")
 
-    templates = template_root or default_template_root()
     destination.mkdir(parents=True)
     try:
         for source_name, target_name in PROJECT_FILES.items():
-            source = templates / source_name
-            content = source.read_text(encoding="utf-8")
+            content = template_content(source_name, template_root)
             atomic_write_text(
                 destination / target_name,
                 content.replace("{{PROJECT_TITLE}}", title.strip()),
@@ -72,4 +75,3 @@ def create_project(
         destination.rmdir()
         raise
     return destination
-

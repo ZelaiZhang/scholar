@@ -90,6 +90,7 @@ Codex 从仓库根目录 `.agents/skills` 自动发现技能；若技能列表�
 ```
 
 返回码 `0` 表示通过；`1` 表示存在缺失来源、页码、状态或限制说明。
+默认在当前工作区的 `library/sources.jsonl` 核验 `source_id`；校验其他工作区时添加 `--workspace <路径>`。
 
 ## 端到端技能
 
@@ -120,6 +121,15 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 
 不要把 Key 写入 `.env.example`、YAML、论文卡片或 Git。调用示例：
 
+先把本次请求实际发送的两个提示词文件登记并显式授权。命令会按当前内容哈希核对文件，不能用无关的已授权来源代替：
+
+```powershell
+.\.venv\Scripts\research-os.exe add-source ".\prompts\system.md" --allow-external-api
+.\.venv\Scripts\research-os.exe add-source ".\prompts\task.md" --allow-external-api
+```
+
+记下输出的两个 `source_id`，再调用模型：
+
 ```powershell
 .\.venv\Scripts\research-os.exe model-call `
   --base-url "https://api.deepseek.com" `
@@ -128,10 +138,12 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
   --system ".\prompts\system.md" `
   --user ".\prompts\task.md" `
   --output ".\artifacts\model-output.json" `
+  --source-id "src-system文件的ID" `
+  --source-id "src-task文件的ID" `
   --allow-external-api
 ```
 
-`--allow-external-api` 是硬门禁：不提供它就拒绝请求。只允许把公开资料或已确认脱敏的示例发送给外部服务。每次成功调用会生成同名 `.provenance.json`，其中记录模型、参数、时间、用量和提示词哈希，但不记录 API Key。
+`--allow-external-api` 和来源级授权是双重硬门禁：缺少任一项都会拒绝请求。修改提示词文件后内容哈希和 `source_id` 会变化，必须重新登记和授权。只允许把公开资料或已确认脱敏的示例发送给外部服务。每次成功调用会生成同名 `.provenance.json`，其中记录模型、参数、时间、用量和提示词哈希，但不记录 API Key。
 
 ## 证据账本最小示例
 
@@ -169,7 +181,7 @@ config/           隐私、证据和模型角色配置
 inbox/            待处理公开资料；PDF 默认不进 Git
 library/          来源登记、论文卡片和文献矩阵
 projects/         每个研究课题的持久成果
-templates/        各科研阶段的人工可读模板
+src/research_os/templates/  各科研阶段的可编辑、可打包模板
 src/research_os/  确定性 CLI 工具
 tests/            自动测试
 ```
@@ -191,4 +203,3 @@ $env:PYTHONUTF8="1"
 ```
 
 详细方案见 `docs/superpowers/specs/2026-08-12-research-os-design.md`，逐步实施记录见 `docs/superpowers/plans/2026-08-12-research-os.md`。
-

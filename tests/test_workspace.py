@@ -17,7 +17,9 @@ def test_workspace_public_data_boundary_is_explicit() -> None:
 
 
 def test_paper_card_requires_evidence_labels() -> None:
-    text = (ROOT / "templates/paper-card.md").read_text(encoding="utf-8")
+    text = (ROOT / "src/research_os/templates/paper-card.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "reported_fact" in text
     assert "model_inference" in text

@@ -97,25 +97,26 @@ PDF / DOI / arXiv / URL / 笔记
 │   └── literature-matrix.csv
 ├── projects/
 │   └── README.md
-├── templates/
-│   ├── research-brief.md
-│   ├── paper-card.md
-│   ├── evidence-ledger.yaml
-│   ├── literature-review.md
-│   ├── idea-candidates.md
-│   ├── experiment-design.md
-│   ├── result-analysis.md
-│   ├── manuscript-outline.md
-│   └── rebuttal-matrix.md
 ├── .agents/skills/
 │   └── <阶段化科研技能>/SKILL.md
 ├── src/research_os/
 │   ├── cli.py
-│   ├── config.py
-│   ├── models.py
-│   ├── providers/
-│   ├── ingest/
-│   └── validation/
+│   ├── evidence.py
+│   ├── io.py
+│   ├── pdf.py
+│   ├── project.py
+│   ├── provider.py
+│   ├── sources.py
+│   └── templates/
+│       ├── research-brief.md
+│       ├── paper-card.md
+│       ├── evidence-ledger.yaml
+│       ├── literature-review.md
+│       ├── idea-candidates.md
+│       ├── experiment-design.md
+│       ├── result-analysis.md
+│       ├── manuscript-outline.md
+│       └── rebuttal-matrix.md
 ├── tests/
 └── docs/
 ```
