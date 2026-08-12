@@ -18,7 +18,11 @@ from research_os.cycle import (
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.ideas import load_idea_archive
-from research_os.io import assert_directory_identity, directory_identity
+from research_os.io import (
+    assert_directory_identity,
+    direct_file_identity,
+    directory_identity,
+)
 from research_os.knowledge_recommend import KnowledgeRecommendation
 from research_os.project import (
     load_project_manifest,
@@ -434,12 +438,29 @@ def _active_ideas(
         raise ValueError(f"Idea directory escapes project: {ideas_path}")
     ideas_identity = directory_identity(ideas_path)
     archive_path = ideas_path / "archive.yaml"
+    archive_identity = direct_file_identity(
+        archive_path,
+        expected_parent=ideas_path,
+        expected_parent_identity=ideas_identity,
+    )
+    if archive_identity != expected.archive_identity:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
     archive = load_idea_archive(
         archive_path,
         allowed_source_ids=source_ids,
         expected_parent=ideas_path,
         expected_parent_identity=ideas_identity,
     )
+    if direct_file_identity(
+        archive_path,
+        expected_parent=ideas_path,
+        expected_parent_identity=ideas_identity,
+    ) != expected.archive_identity:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
     if archive.project_slug != slug:
         raise ValueError(
             "Idea archive belongs to a different project: "
@@ -461,6 +482,37 @@ def _active_ideas(
         raise ValueError(
             "active cycle changed while building meeting brief; regenerate the brief"
         )
+    final_run_dir, final_manifest, final_artifact_identity = (
+        load_active_cycle_snapshot(
+            workspace,
+            slug,
+            expected_project_identity=project_identity,
+        )
+    )
+    if final_run_dir != run_dir or final_artifact_identity != expected.artifact_identity:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
+    final_archive = load_idea_archive(
+        archive_path,
+        allowed_source_ids=source_ids,
+        expected_parent=ideas_path,
+        expected_parent_identity=ideas_identity,
+    )
+    if direct_file_identity(
+        archive_path,
+        expected_parent=ideas_path,
+        expected_parent_identity=ideas_identity,
+    ) != expected.archive_identity:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
+    if cycle_snapshot_token(final_manifest, final_archive) != expected.snapshot_token:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
+    manifest = final_manifest
+    archive = final_archive
     assert_directory_identity(project, project_identity, context="project")
     records = sorted(
         (

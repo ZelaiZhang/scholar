@@ -18,7 +18,11 @@ from research_os.dashboard_risks import (
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.guidance import GuideReport, guide_project
 from research_os.ideas import load_idea_archive
-from research_os.io import assert_directory_identity, directory_identity
+from research_os.io import (
+    assert_directory_identity,
+    direct_file_identity,
+    directory_identity,
+)
 from research_os.knowledge import load_profile
 from research_os.knowledge_recommend import KnowledgeRecommendation
 from research_os.project import (
@@ -58,6 +62,7 @@ class IdeaStatus:
     cycle_state: str
     snapshot_token: str
     artifact_identity: CycleArtifactIdentity | None
+    archive_identity: tuple[int, int] | None
     candidate_count: int
     selected_idea_ids: tuple[str, ...]
     human_decision_required: bool
@@ -244,6 +249,7 @@ def _idea_status(
             cycle_state="not_started",
             snapshot_token="",
             artifact_identity=None,
+            archive_identity=None,
             candidate_count=0,
             selected_idea_ids=(),
             human_decision_required=False,
@@ -271,6 +277,11 @@ def _idea_status(
     if archive_path is None:
         raise FileNotFoundError(ideas / "archive.yaml")
     ideas_identity = directory_identity(ideas)
+    archive_identity = direct_file_identity(
+        archive_path,
+        expected_parent=ideas,
+        expected_parent_identity=ideas_identity,
+    )
     assert_directory_identity(
         project,
         expected_project_identity,
@@ -282,6 +293,12 @@ def _idea_status(
         expected_parent=ideas,
         expected_parent_identity=ideas_identity,
     )
+    if direct_file_identity(
+        archive_path,
+        expected_parent=ideas,
+        expected_parent_identity=ideas_identity,
+    ) != archive_identity:
+        raise OSError(f"Idea archive was replaced while building dashboard: {archive_path}")
     if archive.project_slug != slug:
         raise ValueError(
             "Idea archive 属于不同课题: "
@@ -323,6 +340,7 @@ def _idea_status(
         cycle_state=manifest.state,
         snapshot_token=cycle_snapshot_token(manifest, archive),
         artifact_identity=artifact_identity,
+        archive_identity=archive_identity,
         candidate_count=len(active_ideas),
         selected_idea_ids=selected,
         human_decision_required=manifest.state == "awaiting_human_decision",

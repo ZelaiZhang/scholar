@@ -341,6 +341,53 @@ def test_meeting_brief_rejects_same_run_approval_after_dashboard_snapshot(
         )
 
 
+def test_meeting_brief_rejects_approval_during_artifact_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(tmp_path, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+
+    real_validate = meeting_brief_module.validate_cycle_artifacts
+    approved = False
+
+    def approve_during_validation(*args: object, **kwargs: object) -> object:
+        nonlocal approved
+        issues = real_validate(*args, **kwargs)
+        if not approved:
+            approved = True
+            approve_active_cycle_idea(
+                tmp_path,
+                project.name,
+                "idea-0001",
+                reason="Approved during artifact validation.",
+            )
+            assert advance_cycle(tmp_path, project.name).state == "completed"
+        return issues
+
+    monkeypatch.setattr(
+        meeting_brief_module,
+        "validate_cycle_artifacts",
+        approve_during_validation,
+    )
+
+    with pytest.raises(ValueError, match="active cycle changed"):
+        build_meeting_brief(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
 def test_meeting_brief_rejects_junction_backed_review_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -428,6 +475,53 @@ def test_meeting_brief_rejects_same_content_cycle_directory_replacement(
     )
 
     with pytest.raises(ValueError, match="active cycle changed"):
+        build_meeting_brief(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
+@pytest.mark.parametrize("replaced_file", ["manifest", "archive"])
+def test_meeting_brief_rejects_same_content_state_file_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replaced_file: str,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(tmp_path, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+
+    run_dir = project / "cycles" / created.run_id
+    target = (
+        run_dir / "manifest.yaml"
+        if replaced_file == "manifest"
+        else project / "ideas" / "archive.yaml"
+    )
+    outside = tmp_path / f"original-{replaced_file}.yaml"
+    real_build_dashboard = meeting_brief_module.build_project_dashboard
+
+    def replace_after_snapshot(*args: object, **kwargs: object) -> object:
+        snapshot = real_build_dashboard(*args, **kwargs)
+        target.replace(outside)
+        shutil.copy2(outside, target)
+        return snapshot
+
+    monkeypatch.setattr(
+        meeting_brief_module,
+        "build_project_dashboard",
+        replace_after_snapshot,
+    )
+
+    with pytest.raises(ValueError, match="active cycle changed|replaced"):
         build_meeting_brief(
             tmp_path,
             project.name,

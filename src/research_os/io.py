@@ -51,6 +51,36 @@ def assert_directory_identity(
         raise OSError(f"{context} directory was replaced or changed: {path}")
 
 
+def direct_file_identity(
+    path: Path,
+    *,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> tuple[int, int]:
+    """Capture one direct regular file identity while its parent stays stable."""
+    parent = (expected_parent or path.parent).resolve()
+    if path.parent.resolve() != parent:
+        raise ValueError(f"file escapes its expected parent: {path}")
+    parent_before = parent.stat()
+    if (
+        expected_parent_identity is not None
+        and _identity(parent_before) != expected_parent_identity
+    ):
+        raise OSError(f"file parent was replaced before identity capture: {parent}")
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise FileNotFoundError(path) from exc
+    if _is_link_or_reparse(metadata, path):
+        raise ValueError(f"file cannot be a link or reparse point: {path}")
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError(f"expected a regular file: {path}")
+    parent_after = parent.stat()
+    if _identity(parent_after) != _identity(parent_before):
+        raise OSError(f"file parent changed during identity capture: {parent}")
+    return _identity(metadata)
+
+
 def read_stable_direct_text(
     path: Path,
     *,

@@ -97,6 +97,7 @@ class CycleAction:
 @dataclass(frozen=True)
 class CycleArtifactIdentity:
     run: tuple[int, int]
+    manifest: tuple[int, int]
     candidates: tuple[int, int] | None
     reviews: tuple[int, int] | None
     review_files: tuple[tuple[str, tuple[int, int]], ...]
@@ -910,7 +911,7 @@ def _active_run_with_identity(
     project: Path,
     *,
     expected_project_identity: tuple[int, int] | None = None,
-) -> tuple[Path, CycleManifest, tuple[int, int]]:
+) -> tuple[Path, CycleManifest, tuple[int, int], tuple[int, int]]:
     project_identity = expected_project_identity or _directory_identity(project)
     _assert_directory_identity(project, project_identity, context="project")
     cycles = _direct_directory(project, "cycles", create=False)
@@ -931,8 +932,19 @@ def _active_run_with_identity(
     _assert_directory_identity(cycles, cycles_identity, context="cycles")
     run_dir = _direct_directory(cycles, run_id, create=False)
     run_identity = _directory_identity(run_dir)
+    manifest_path, manifest_identity = _direct_file_identity(
+        run_dir,
+        "manifest.yaml",
+        expected_parent_identity=run_identity,
+    )
     manifest = load_cycle_manifest(
-        run_dir / "manifest.yaml",
+        manifest_path,
+        expected_parent_identity=run_identity,
+    )
+    _assert_direct_file_identity(
+        run_dir,
+        "manifest.yaml",
+        manifest_identity,
         expected_parent_identity=run_identity,
     )
     if manifest.project_slug != project.name:
@@ -940,7 +952,7 @@ def _active_run_with_identity(
     _assert_directory_identity(cycles, cycles_identity, context="cycles")
     _assert_directory_identity(project, project_identity, context="project")
     _assert_directory_identity(run_dir, run_identity, context="run")
-    return run_dir, manifest, run_identity
+    return run_dir, manifest, run_identity, manifest_identity
 
 
 def _active_run(
@@ -948,7 +960,7 @@ def _active_run(
     *,
     expected_project_identity: tuple[int, int] | None = None,
 ) -> tuple[Path, CycleManifest]:
-    run_dir, manifest, _run_identity = _active_run_with_identity(
+    run_dir, manifest, _run_identity, _manifest_identity = _active_run_with_identity(
         project,
         expected_project_identity=expected_project_identity,
     )
@@ -960,11 +972,26 @@ def capture_cycle_artifact_identity(
     manifest: CycleManifest,
     *,
     expected_run_identity: tuple[int, int] | None = None,
+    expected_manifest_identity: tuple[int, int] | None = None,
 ) -> CycleArtifactIdentity:
     if _is_link_or_reparse_point(run_dir):
         raise ValueError(f"run directory cannot be a link or reparse point: {run_dir}")
     run_identity = expected_run_identity or _directory_identity(run_dir)
     _assert_directory_identity(run_dir, run_identity, context="run")
+    if expected_manifest_identity is None:
+        _manifest_path, manifest_identity = _direct_file_identity(
+            run_dir,
+            "manifest.yaml",
+            expected_parent_identity=run_identity,
+        )
+    else:
+        manifest_identity = expected_manifest_identity
+        _assert_direct_file_identity(
+            run_dir,
+            "manifest.yaml",
+            manifest_identity,
+            expected_parent_identity=run_identity,
+        )
 
     candidates_identity: tuple[int, int] | None = None
     if manifest.candidate_sha256:
@@ -1000,6 +1027,7 @@ def capture_cycle_artifact_identity(
     _assert_directory_identity(run_dir, run_identity, context="run")
     return CycleArtifactIdentity(
         run=run_identity,
+        manifest=manifest_identity,
         candidates=candidates_identity,
         reviews=reviews_identity,
         review_files=tuple(review_files),
@@ -1027,7 +1055,7 @@ def load_active_cycle_snapshot(
     expected_project_identity: tuple[int, int] | None = None,
 ) -> tuple[Path, CycleManifest, CycleArtifactIdentity]:
     project = resolve_project_path(workspace, slug, require_exists=True)
-    run_dir, manifest, run_identity = _active_run_with_identity(
+    run_dir, manifest, run_identity, manifest_identity = _active_run_with_identity(
         project,
         expected_project_identity=expected_project_identity,
     )
@@ -1035,6 +1063,7 @@ def load_active_cycle_snapshot(
         run_dir,
         manifest,
         expected_run_identity=run_identity,
+        expected_manifest_identity=manifest_identity,
     )
     return run_dir, manifest, identity
 
@@ -1329,6 +1358,21 @@ def validate_cycle_artifacts(
             else _directory_identity(run_dir)
         )
         _assert_directory_identity(run_dir, run_identity, context="run")
+        manifest_identity = (
+            expected_identity.manifest
+            if expected_identity is not None
+            else _direct_file_identity(
+                run_dir,
+                "manifest.yaml",
+                expected_parent_identity=run_identity,
+            )[1]
+        )
+        _assert_direct_file_identity(
+            run_dir,
+            "manifest.yaml",
+            manifest_identity,
+            expected_parent_identity=run_identity,
+        )
     except (OSError, ValueError) as exc:
         return (f"run: {exc}",)
     if manifest.candidate_sha256:
@@ -1486,6 +1530,15 @@ def validate_cycle_artifacts(
                 )
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(f"approval: {exc}")
+    try:
+        _assert_direct_file_identity(
+            run_dir,
+            "manifest.yaml",
+            manifest_identity,
+            expected_parent_identity=run_identity,
+        )
+    except (OSError, ValueError) as exc:
+        issues.append(f"manifest: {exc}")
     return tuple(issues)
 
 
