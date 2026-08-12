@@ -14,6 +14,29 @@
 
 编辑文件只会让阶段变为“进行中”。对应 Codex 技能完成质量门禁并保留人工确认后，才写入阶段完成标记并允许 `guide` 推荐下一阶段；因此随手改一个字符不会被误判为完成。
 
+## v0.5 课题研究驾驶舱
+
+需要一次看清课题全局状态时，运行只读驾驶舱：
+
+```powershell
+.\.venv\Scripts\research-os.exe dashboard `
+  --project medical-reasoning `
+  --as-of 2026-08-12
+```
+
+`dashboard` 汇总六个区域：课题状态、证据健康度、Idea 与人工决策、方法学参考、风险雷达和最多三个今日行动。它复用 `guide` 的阶段与门禁，不建立第二套状态机；行动按“修复阻塞 → 当前门禁 → 证据补全 → 方法增强”排序，并去除重复命令。
+
+机器可读输出：
+
+```powershell
+.\.venv\Scripts\research-os.exe dashboard `
+  --project medical-reasoning `
+  --as-of 2026-08-12 `
+  --format json
+```
+
+相同工作区字节、课题和 `--as-of` 会得到相同输出。命令只读、不联网、不调用 DeepSeek/OpenAI、不创建缓存，也不修改课题、证据账本、科研循环或知识库。风险只由结构化事实触发；无法确认的医疗或实验条件不会伪装成已发现问题。全局方法条目不会自动成为当前课题引用证据。
+
 ## 第一次使用
 
 要求 Python 3.11 或更高版本。在当前仓库打开 PowerShell：
@@ -321,6 +344,7 @@ reporting_context: [diagnostic-accuracy]
 ```text
 doctor            只读工作区自检
 guide             课题驾驶舱与唯一下一步
+dashboard         课题全局状态、证据风险与最多三个今日行动
 cycle             创建或恢复有界科研循环
 approve-idea      研究者批准当前 run 的入围 Idea
 new-project       创建课题
@@ -355,7 +379,8 @@ git diff --check
 - `kb doctor` 校验 catalog schema、来源登记、阅读范围、全文 locator、替代关系、陈旧复核、知识资产引用和路径安全。
 - `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。
 - `kb search` 使用 NFKC、CJK 二元词片和人工双语别名支持中文术语；`kb gaps` 只读生成确定性维护队列。
+- `dashboard` 以版本化 JSON 聚合课题、证据、Idea、方法、风险和行动；固定 `--as-of` 后可复现且执行前后工作区字节不变。
 - 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
 - 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
-日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。
+日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。

@@ -55,10 +55,13 @@ def test_daily_driver_is_documented_and_packaged() -> None:
     assert "research-os.exe add-sources" in readme
     assert "research-os.exe cycle" in readme
     assert "research-os.exe approve-idea" in readme
+    assert "research-os.exe dashboard" in readme
     assert "research-os.exe kb gaps" in readme
+    assert "课题研究驾驶舱" in readme
+    assert "--as-of 2026-08-12" in readme
     assert "诊断准确性" in readme
     assert "$research-cycle" in readme
-    assert 'version = "0.4.1"' in pyproject
+    assert 'version = "0.5.0"' in pyproject
 
 
 def test_package_version_matches_project_metadata() -> None:

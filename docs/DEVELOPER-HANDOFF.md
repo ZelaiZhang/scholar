@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-12；包版本：`0.4.1`；功能基线以本文档所在提交为准。
+> 最后核对：2026-08-12；包版本：`0.5.0`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.4.1`，已经完成：
+当前稳定版本是 `v0.5.0`，已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -41,8 +41,9 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 16. 医疗 AI 报告规范路由和知识库完整性检查；
 17. NFKC/CJK 词片和人工双语别名驱动的中文知识检索；
 18. 只读、可固定日期的知识维护缺口队列。
+19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 
-截至本文档更新，v0.4.1 完整测试为 `244 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令。
+截至本文档更新，v0.5.0 完整测试为 `259 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
 
 ## 3. 系统总览
 
@@ -50,6 +51,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 flowchart LR
     U["研究者"] --> D["doctor：只读自检"]
     D --> G["guide：唯一下一步"]
+    D --> B["dashboard：全局状态与三个行动"]
     G --> S["Codex 科研技能"]
     G --> C["Research OS CLI"]
     S --> P["课题文件与人工判断"]
@@ -58,6 +60,9 @@ flowchart LR
     C --> X["有界 Research Cycle"]
     R --> P
     K --> G
+    K --> B
+    R --> B
+    X --> B
     X --> P
     P --> G
     X -. "显式双重授权后可选" .-> API["DeepSeek / OpenAI-compatible API"]
@@ -123,6 +128,7 @@ flowchart LR
 |---|---|---:|---:|
 | `doctor` | 检查 Python、目录、技能、来源、课题、循环和日志 | 否 | 否 |
 | `guide` | 显示当前阶段、阻塞原因和唯一下一步 | 否 | 否 |
+| `dashboard` | 汇总课题、证据、Idea、方法、风险和最多三个今日行动 | 否 | 否 |
 | `new-project` | 创建标准课题目录和模板 | 是 | 否 |
 | `add-source` | 登记、去重并可选关联单条来源 | 是 | 否 |
 | `add-sources` | 从 UTF-8 清单原子批量登记来源 | 是 | 否 |
@@ -141,7 +147,10 @@ flowchart LR
 ```powershell
 .\.venv\Scripts\research-os.exe doctor
 .\.venv\Scripts\research-os.exe guide --project medical-reasoning
+.\.venv\Scripts\research-os.exe dashboard --project medical-reasoning --as-of 2026-08-12
 ```
+
+`guide` 负责唯一下一步，`dashboard` 负责全局研究快照。二者复用同一阶段和门禁判断；`dashboard` 的 `--format json` 是未来接入外部模型进行受控语言润色的稳定边界，但当前命令不联网、不写文件，也不允许模型改变事实、风险或行动优先级。
 
 批量登记来源：
 
@@ -309,6 +318,8 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `knowledge_search.py` | Unicode/CJK token、固定权重检索和稳定排序 | 禁止引入随机、联网或不可解释排序 |
 | `knowledge_gaps.py` | 纯函数式知识维护分类、过滤和稳定排序 | 必须只读；固定日期应产生相同结果 |
 | `knowledge_recommend.py` | 课题画像、阶段、手册和报告规范推荐 | 最多三项，绝不自动关联项目证据 |
+| `dashboard.py` | 课题快照、证据/Idea 汇总和最多三个行动 | 只能编排既有严格 reader；不得写文件或调用 provider |
+| `dashboard_risks.py` | 对结构化事实执行稳定风险规则 | 不读文件、不解析自由文本、不把 unknown 当 observed |
 
 ## 13. 开发与验证
 
@@ -348,6 +359,8 @@ git diff --check
 - `docs/superpowers/plans/2026-08-12-research-methods-knowledge-base.md`：v0.4 TDD 实施计划；
 - `docs/superpowers/specs/2026-08-12-bilingual-knowledge-search-design.md`：v0.4.1 中文检索与维护队列；
 - `docs/superpowers/plans/2026-08-12-bilingual-search-and-gaps.md`：v0.4.1 TDD 实施计划。
+- `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`：v0.5 课题研究驾驶舱；
+- `docs/superpowers/plans/2026-08-12-project-research-dashboard.md`：v0.5 TDD 实施计划。
 
 关键提交脉络：
 
@@ -373,6 +386,10 @@ git diff --check
 | `b5dee43` | 28 条种子来源的人工双语别名 |
 | `0bf1500` | 纯函数式知识维护缺口分类 |
 | `9ff5f8c` | `kb gaps` 只读 CLI |
+| `d3d03ae` | 课题级证据健康快照 |
+| `ddf15ec` | Idea 状态与结构化风险规则 |
+| `455c9d4` | 方法学参考和去重行动优先级 |
+| `0f7ebe8` | `dashboard` CLI、JSON 与只读确定性测试 |
 
 ## 15. 已知限制与技术债
 
@@ -384,6 +401,7 @@ git diff --check
 - `cycle.py` 体积较大，未来可按状态阶段、事务和 provider 提交拆分，但必须保持现有恢复/并发测试；
 - 自动评审是研究质量辅助信号，不能替代导师、同行评审、统计复核或临床验证；
 - 软件尚未承诺稳定公共 Python API，现阶段优先保持 CLI 和文件格式兼容。
+- 风险雷达只报告当前结构化 schema 能证明的条件；它不是临床风险管理、伦理审批或完整实验审计的替代品。
 
 ## 16. v0.4.1 专业知识库：已实现
 
@@ -402,7 +420,26 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 
 完整规格见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`。后续重点是全文核验、版本维护与真实课题走查；达到至少 100 张核验卡前，不引入向量数据库。
 
-## 17. 安全扩展流程
+## 17. v0.5 课题研究驾驶舱：已实现
+
+> **实现状态：快照模型、证据隔离、Idea 状态、确定性风险、行动优先级、文本/JSON CLI 与只读测试均已存在。**
+
+核心数据流：
+
+1. `dashboard.py` 通过安全路径解析读取目标 `project.yaml`；
+2. `SourceRegistry.verified_source_ids()` 与课题 `source_ids` 取交集，形成唯一允许的证据范围；
+3. 证据账本用该范围重新严格校验，统计支持、反对、冲突和限制；
+4. active cycle 与 Idea archive 必须通过原有 schema、run 绑定和来源校验；
+5. 方法学参考直接复用 `guide` 已计算的最多三项推荐；
+6. `dashboard_risks.py` 只接受不可变结构化事实，输出带稳定 code、severity、state 和 trigger 的风险；
+7. 行动固定按 repair、workflow、evidence、methodology 排序，并按完整命令去重后截取前三项；
+8. CLI 显式序列化 schema version 1，避免内部 dataclass 变化悄悄破坏 JSON。
+
+新增或修改风险规则时，必须先在 `tests/test_dashboard.py` 写出可复现的结构化触发和 unknown 反例。不得扫描研究简报、claim statement 或模型输出关键词后声称发现医疗缺陷。新增行动命令必须来自现有受控 CLI/技能契约，不能把来源 notes、claim 文本或其他不可信内容拼进 shell 命令。
+
+完整规格和计划分别见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md` 与 `docs/superpowers/plans/2026-08-12-project-research-dashboard.md`。
+
+## 18. 安全扩展流程
 
 新增功能建议遵循：
 

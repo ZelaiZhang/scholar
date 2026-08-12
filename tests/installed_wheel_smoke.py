@@ -30,6 +30,14 @@ def run_cli(argv: list[str]) -> tuple[int, str]:
     return code, output.getvalue()
 
 
+def workspace_bytes(workspace: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in sorted(workspace.rglob("*"))
+        if path.is_file()
+    }
+
+
 def main_smoke(workspace: Path, repository: Path) -> None:
     workspace.mkdir()
     for folder in ("projects", "library", "inbox", "config"):
@@ -168,6 +176,29 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         "<!-- research-os:stage=synthesis-complete -->\n",
         encoding="utf-8",
     )
+
+    dashboard_args = [
+        "dashboard",
+        "--project",
+        "wheel-topic",
+        "--as-of",
+        "2026-08-12",
+        "--format",
+        "json",
+        "--workspace",
+        str(workspace),
+    ]
+    dashboard_before = workspace_bytes(workspace)
+    code, first_dashboard = run_cli(dashboard_args)
+    assert code == 0, first_dashboard
+    code, second_dashboard = run_cli(dashboard_args)
+    assert code == 0 and second_dashboard == first_dashboard, second_dashboard
+    dashboard_payload = json.loads(first_dashboard)
+    assert dashboard_payload["schema_version"] == 1
+    assert dashboard_payload["as_of"] == "2026-08-12"
+    assert dashboard_payload["project"]["slug"] == "wheel-topic"
+    assert len(dashboard_payload["actions"]) <= 3
+    assert workspace_bytes(workspace) == dashboard_before
 
     cycle_args = ["cycle", "--project", "wheel-topic", "--workspace", str(workspace)]
     code, first = run_cli(cycle_args)
