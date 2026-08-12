@@ -3,11 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from research_os.cli import main
 from research_os.project import create_project
 from research_os.sources import SourceRegistry
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _entry(record) -> dict[str, object]:
@@ -119,6 +123,35 @@ def test_kb_search_valid_empty_result_has_next_query_hint(
     assert code == 0
     assert "没有匹配" in output
     assert "调整关键词或过滤条件" in output
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_title"),
+    [
+        ("诊断准确性", "STARD-AI"),
+        ("思维链", "Chain-of-Thought Prompting"),
+        ("微调量化", "QLoRA"),
+    ],
+)
+def test_bundled_kb_search_supports_chinese_queries(
+    query: str, expected_title: str, capsys
+) -> None:
+    code = main(
+        [
+            "kb",
+            "search",
+            query,
+            "--format",
+            "json",
+            "--workspace",
+            str(ROOT),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert expected_title in payload[0]["title"]
+    assert "alias" in payload[0]["matched_fields"]
 
 
 def test_kb_doctor_returns_two_for_corrupt_catalog(tmp_path: Path, capsys) -> None:
