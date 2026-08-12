@@ -15,6 +15,7 @@ NAMES = (
     "manuscript-assistant",
     "mock-reviewer",
     "research-weekly-review",
+    "research-cycle",
 )
 
 
@@ -76,3 +77,17 @@ def test_stage_skills_write_completion_markers_only_after_quality_gates() -> Non
 
         assert f"research-os:stage={marker}" in text
         assert "质量门禁" in text
+
+
+def test_research_cycle_skill_enforces_controller_and_human_boundaries() -> None:
+    text = (
+        ROOT / ".agents/skills/research-cycle/SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "只处理当前阶段" in text
+    assert "$paper-intake" in text
+    assert "candidates.yaml" in text
+    assert "不得用模型调用替代文献检索" in text
+    assert "不得运行训练" in text
+    assert "selected" in text
+    assert "research-os cycle" in text

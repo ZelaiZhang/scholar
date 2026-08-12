@@ -1,0 +1,4 @@
+interface:
+  display_name: "Supervised Research Cycle"
+  short_description: "Advance bounded, auditable research cycles with human gates"
+  default_prompt: "Use $research-cycle to advance only the verified current stage of my active research run."

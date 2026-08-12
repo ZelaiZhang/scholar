@@ -27,6 +27,7 @@ EXPECTED_SKILLS = (
     "manuscript-assistant",
     "mock-reviewer",
     "research-weekly-review",
+    "research-cycle",
 )
 CORE_PROJECT_FILES = (
     "00-research-brief.md",
@@ -226,7 +227,7 @@ def run_doctor(
             )
         )
     else:
-        items.append(DiagnosticItem("pass", "skills", "10 个科研技能可读"))
+        items.append(DiagnosticItem("pass", "skills", "11 个科研技能可读"))
 
     verified_ids: set[str] | None = None
     try:
