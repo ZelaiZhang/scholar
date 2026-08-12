@@ -12,6 +12,16 @@ from research_os.cycle import advance_cycle, approve_active_cycle_idea
 from research_os.evidence import load_ledger, render_validation_report, validate_ledger
 from research_os.guidance import guide_project, render_guide
 from research_os.io import atomic_write_bytes, atomic_write_text
+from research_os.knowledge import (
+    METHODS,
+    PRIORITIES,
+    STAGES,
+    TOPICS,
+    inspect_knowledge_base,
+    load_knowledge_base,
+)
+from research_os.knowledge_recommend import recommend_for_project
+from research_os.knowledge_search import SearchFilters, search_knowledge
 from research_os.pdf import extract_pdf
 from research_os.project import (
     create_project,
@@ -138,6 +148,43 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_parser.add_argument("ledger", type=Path)
     evidence_parser.add_argument("--report", type=Path)
     evidence_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    kb_parser = subparsers.add_parser(
+        "kb", help="检索、推荐和检查本地科研方法知识库"
+    )
+    kb_subparsers = kb_parser.add_subparsers(dest="kb_command", required=True)
+
+    kb_doctor = kb_subparsers.add_parser(
+        "doctor", help="严格检查知识目录、卡片、来源和引用"
+    )
+    kb_doctor.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    kb_search = kb_subparsers.add_parser(
+        "search", help="执行确定性本地方法学检索"
+    )
+    kb_search.add_argument("query", help="关键词或短语")
+    kb_search.add_argument("--topic", choices=sorted(TOPICS), default="")
+    kb_search.add_argument("--method", choices=sorted(METHODS), default="")
+    kb_search.add_argument("--stage", choices=sorted(STAGES), default="")
+    kb_search.add_argument("--priority", choices=sorted(PRIORITIES), default="")
+    kb_search.add_argument(
+        "--verified-scope",
+        choices=("metadata", "abstract", "fulltext"),
+        default="",
+    )
+    kb_search.add_argument("--limit", type=int, default=10)
+    kb_search.add_argument("--format", choices=("text", "json"), default="text")
+    kb_search.add_argument("--include-history", action="store_true")
+    kb_search.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    kb_recommend = kb_subparsers.add_parser(
+        "recommend", help="按课题画像和当前阶段推荐方法学参考"
+    )
+    kb_recommend.add_argument("--project", required=True, help="课题 slug")
+    kb_recommend.add_argument(
+        "--format", choices=("text", "json"), default="text"
+    )
+    kb_recommend.add_argument("--workspace", type=Path, default=Path.cwd())
     return parser
 
 
@@ -290,6 +337,130 @@ def _link_sources_transactionally(
         raise
 
 
+def _entry_verification_scope(entry) -> str:
+    if entry.verification.fulltext == "verified":
+        return "fulltext"
+    if entry.verification.abstract == "verified":
+        return "abstract"
+    if entry.verification.metadata == "verified":
+        return "metadata"
+    return "unverified"
+
+
+def _search_payload(results) -> list[dict[str, object]]:
+    return [
+        {
+            "source_id": result.entry.source_id,
+            "title": result.entry.title,
+            "score": result.score,
+            "matched_fields": list(result.matched_fields),
+            "priority": result.entry.priority,
+            "verification_scope": _entry_verification_scope(result.entry),
+            "status": result.entry.status,
+            "access_url": result.entry.access_url,
+        }
+        for result in results
+    ]
+
+
+def _render_kb_search(results) -> str:
+    if not results:
+        return (
+            "没有匹配的知识条目。\n"
+            "下一步：调整关键词或过滤条件，并记录需要补充核验的新来源。\n"
+        )
+    lines = ["# 科研方法知识库检索", ""]
+    for index, result in enumerate(results, 1):
+        entry = result.entry
+        lines.extend(
+            [
+                f"## {index}. {entry.title}",
+                "",
+                f"- source_id: `{entry.source_id}`",
+                f"- 得分: {result.score}",
+                f"- 命中: {', '.join(result.matched_fields) or '过滤条件'}",
+                f"- 优先级: {entry.priority}",
+                f"- 核验范围: {_entry_verification_scope(entry)}",
+                f"- 原文: {entry.access_url}",
+                "- 边界: 全局知识条目不能直接作为课题引用证据。",
+                (
+                    f"- 关联提示: `$paper-intake 核验并把 {entry.source_id} "
+                    "显式关联到目标课题`"
+                ),
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _recommendation_payload(recommendations) -> list[dict[str, object]]:
+    return [
+        {
+            "kind": item.kind,
+            "title": item.title,
+            "source_id": item.source_id,
+            "reason": item.reason,
+            "verification_scope": item.verification_scope,
+            "can_use_for": item.can_use_for,
+            "cannot_use_for": item.cannot_use_for,
+            "path": str(item.path) if item.path is not None else None,
+        }
+        for item in recommendations
+    ]
+
+
+def _render_kb_recommend(recommendations) -> str:
+    if not recommendations:
+        return "当前没有可用的方法学推荐；请运行 research-os kb doctor。\n"
+    lines = ["# 当前课题的方法学参考", ""]
+    for index, item in enumerate(recommendations, 1):
+        lines.extend(
+            [
+                f"## {index}. {item.title}",
+                "",
+                f"- 类型: {item.kind}",
+                f"- source_id: `{item.source_id or '-'}`",
+                f"- 推荐原因: {item.reason}",
+                f"- 核验范围: {item.verification_scope}",
+                f"- 可用于: {item.can_use_for}",
+                f"- 不可用于: {item.cannot_use_for}",
+                f"- 本地路径: `{item.path if item.path is not None else '-'}`",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _knowledge_stage_for_guide(report) -> str:
+    skill_to_stage = {
+        "research-project-init": "problem-definition",
+        "paper-intake": "literature-search",
+        "paper-deep-read": "literature-search",
+        "literature-synthesis": "evidence-synthesis",
+        "research-cycle": "idea-review",
+        "idea-review": "idea-review",
+        "experiment-advisor": "experiment-design",
+        "result-interpreter": "result-interpretation",
+        "manuscript-assistant": "writing",
+        "mock-reviewer": "review",
+        "research-weekly-review": "review",
+    }
+    if report.next_action.skill in skill_to_stage:
+        return skill_to_stage[report.next_action.skill]
+    target = report.next_action.target.casefold()
+    if "idea" in target or "cycles" in target:
+        return "idea-review"
+    if "experiment" in target or "artifacts" in target:
+        return "experiment-design"
+    if "result" in target:
+        return "result-interpretation"
+    if "writing" in target:
+        return "writing"
+    if "review" in target:
+        return "review"
+    return "problem-definition"
+
+
 def _run(args: argparse.Namespace) -> int:
     if args.command == "doctor":
         report = run_doctor(
@@ -312,6 +483,61 @@ def _run(args: argparse.Namespace) -> int:
             slug = slugs[0]
         print(render_guide(guide_project(args.workspace, slug)), end="")
         return 0
+    if args.command == "kb":
+        if args.kb_command == "doctor":
+            report = inspect_knowledge_base(args.workspace)
+            if not report.issues:
+                print(
+                    f"[PASS] knowledge: {report.entry_count} 条目录，"
+                    f"{report.card_count} 张知识卡"
+                )
+            else:
+                for issue in report.issues:
+                    print(f"[{issue.level}] knowledge: {issue.message}")
+                if report.exit_code == 0:
+                    print(
+                        f"[PASS] knowledge: {report.entry_count} 条目录，"
+                        f"{report.card_count} 张知识卡"
+                    )
+            return report.exit_code
+        if args.kb_command == "search":
+            kb = load_knowledge_base(args.workspace)
+            results = search_knowledge(
+                kb,
+                args.query,
+                filters=SearchFilters(
+                    topic=args.topic,
+                    method=args.method,
+                    stage=args.stage,
+                    priority=args.priority,
+                    verified_scope=args.verified_scope,
+                    include_history=args.include_history,
+                ),
+                limit=args.limit,
+            )
+            if args.format == "json":
+                print(json.dumps(_search_payload(results), ensure_ascii=False, indent=2))
+            else:
+                print(_render_kb_search(results), end="")
+            return 0
+        if args.kb_command == "recommend":
+            guide = guide_project(args.workspace, args.project)
+            recommendations = recommend_for_project(
+                args.workspace,
+                args.project,
+                stage=_knowledge_stage_for_guide(guide),
+            )
+            if args.format == "json":
+                print(
+                    json.dumps(
+                        _recommendation_payload(recommendations),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                print(_render_kb_recommend(recommendations), end="")
+            return 0
     if args.command == "cycle":
         if args.provider_role and not args.allow_external_api:
             raise PermissionError(

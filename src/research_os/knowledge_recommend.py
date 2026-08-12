@@ -90,15 +90,17 @@ def _select_method_source(
     profile: KnowledgeProfile | None,
     stage: str,
 ) -> CatalogEntry | None:
-    candidates = [
+    eligible = [
         entry
         for entry in kb.entries
         if entry.status == "active"
         and entry.priority != "watch"
         and entry.verification.metadata == "verified"
         and "reporting-guideline" not in entry.methods
-        and stage in entry.stages
     ]
+    candidates = [entry for entry in eligible if stage in entry.stages]
+    if not candidates:
+        candidates = eligible
     candidates.sort(
         key=lambda entry: (
             -_method_score(entry, profile, stage),
