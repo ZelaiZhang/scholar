@@ -350,6 +350,55 @@ def test_provider_budget_reservation_rejects_a_stale_manifest(tmp_path: Path) ->
     assert load_cycle_manifest(run_dir / "manifest.yaml").calls_used == 1
 
 
+def test_abandoned_budget_lock_file_does_not_block_a_new_reservation(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a", max_calls=1)
+    run_dir = project / "cycles" / created.run_id
+    (run_dir / ".provider-budget.lock").write_text("stale-pid", encoding="ascii")
+    manifest = load_cycle_manifest(run_dir / "manifest.yaml")
+    context = cycle_module.ExternalContextSnapshot(
+        path=run_dir / "context.md",
+        content="bounded context",
+        sha256="0" * 64,
+        context_source_id="src-context",
+        input_source_ids=("src-a",),
+    )
+
+    class Provider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+    updated, call_number = cycle_module._begin_provider_call(
+        project,
+        run_dir,
+        manifest,
+        provider=Provider(),
+        context=context,
+        stage="candidate_generation",
+        system_prompt="system",
+        user_prompt="user",
+        expected_run_identity=cycle_module._directory_identity(run_dir),
+    )
+
+    assert call_number == 1
+    assert updated.calls_used == 1
+
+
+def test_live_budget_lock_rejects_a_second_process(tmp_path: Path) -> None:
+    project = _external_project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    run_dir = project / "cycles" / created.run_id
+    identity = cycle_module._directory_identity(run_dir)
+
+    with cycle_module._provider_budget_lock(run_dir, identity):
+        with pytest.raises(RuntimeError, match="another cycle process"):
+            with cycle_module._provider_budget_lock(run_dir, identity):
+                raise AssertionError("second lock unexpectedly acquired")
+
+
 def test_approved_idea_must_match_the_reviewed_candidate(tmp_path: Path) -> None:
     project = _project(tmp_path)
     created = advance_cycle(tmp_path, "topic-a")

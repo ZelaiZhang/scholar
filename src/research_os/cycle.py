@@ -358,21 +358,50 @@ def _provider_budget_lock(
         run_dir, expected_run_identity, context="cycle run before budget reservation"
     )
     lock_path = run_dir / ".provider-budget.lock"
+    handle = lock_path.open("a+b")
+    handle.seek(0, 2)
+    if handle.tell() == 0:
+        handle.write(b"0")
+        handle.flush()
+    handle.seek(0)
+    locked = False
     try:
-        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError as exc:
-        raise RuntimeError(
-            "another cycle process is reserving the provider budget; retry after it finishes"
-        ) from exc
-    try:
-        os.write(descriptor, str(os.getpid()).encode("ascii"))
-        os.close(descriptor)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        locked = True
         yield
+    except OSError as exc:
+        if not locked:
+            raise RuntimeError(
+                "another cycle process is reserving the provider budget; "
+                "retry after it finishes"
+            ) from exc
+        raise
     finally:
-        _assert_directory_identity(
-            run_dir, expected_run_identity, context="cycle run during budget reservation"
-        )
-        lock_path.unlink(missing_ok=True)
+        try:
+            if locked:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            _assert_directory_identity(
+                run_dir,
+                expected_run_identity,
+                context="cycle run during budget reservation",
+            )
 
 
 def _begin_provider_call(
