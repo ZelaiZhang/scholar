@@ -172,11 +172,21 @@ def _snapshot_file(path: Path) -> bytes | None:
     return path.read_bytes() if path.exists() else None
 
 
-def _restore_file(path: Path, snapshot: bytes | None) -> None:
+def _restore_file(
+    path: Path,
+    snapshot: bytes | None,
+    expected_parent_identity: tuple[int, int],
+) -> None:
+    if _path_identity(path.parent) != expected_parent_identity:
+        raise OSError(f"回滚目录在提交前被替换: {path.parent}")
     if snapshot is None:
         path.unlink(missing_ok=True)
     else:
-        atomic_write_bytes(path, snapshot)
+        atomic_write_bytes(
+            path,
+            snapshot,
+            expected_parent_identity=expected_parent_identity,
+        )
 
 
 def _registry_path(workspace: Path) -> Path:
@@ -203,7 +213,12 @@ def _link_sources_transactionally(
             != project_state.directory_identity
         ):
             raise OSError(f"课题目录在来源登记期间被替换: {current_project}")
-        link_project_sources(workspace, project_state.slug, source_ids)
+        link_project_sources(
+            workspace,
+            project_state.slug,
+            source_ids,
+            project_state.directory_identity,
+        )
     except BaseException:
         rollback_errors: list[Exception] = []
         try:
@@ -216,7 +231,11 @@ def _link_sources_transactionally(
                 raise OSError(
                     f"library 目录在回滚前被替换: {current_registry.parent}"
                 )
-            _restore_file(registry_path, registry_snapshot)
+            _restore_file(
+                registry_path,
+                registry_snapshot,
+                registry_directory_identity,
+            )
         except (OSError, ValueError) as rollback_error:
             rollback_errors.append(rollback_error)
         try:
@@ -234,6 +253,7 @@ def _link_sources_transactionally(
             _restore_file(
                 project_state.manifest_path,
                 project_state.manifest_snapshot,
+                project_state.directory_identity,
             )
         except (OSError, ValueError) as rollback_error:
             rollback_errors.append(rollback_error)
@@ -275,9 +295,13 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "add-source":
         workspace = args.workspace.resolve()
         project_state = _preflight_project(workspace, args.project)
-        registry = SourceRegistry(_registry_path(workspace))
-        registry.path.parent.mkdir(parents=True, exist_ok=True)
-        registry_directory_identity = _path_identity(registry.path.parent)
+        registry_path = _registry_path(workspace)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_directory_identity = _path_identity(registry_path.parent)
+        registry = SourceRegistry(
+            registry_path,
+            expected_parent_identity=registry_directory_identity,
+        )
         registry_snapshot = _snapshot_file(registry.path)
         record = registry.add(
             args.source,
@@ -299,9 +323,13 @@ def _run(args: argparse.Namespace) -> int:
         workspace = args.workspace.resolve()
         project_state = _preflight_project(workspace, args.project)
         values = load_source_manifest(args.manifest.resolve())
-        registry = SourceRegistry(_registry_path(workspace))
-        registry.path.parent.mkdir(parents=True, exist_ok=True)
-        registry_directory_identity = _path_identity(registry.path.parent)
+        registry_path = _registry_path(workspace)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_directory_identity = _path_identity(registry_path.parent)
+        registry = SourceRegistry(
+            registry_path,
+            expected_parent_identity=registry_directory_identity,
+        )
         registry_snapshot = _snapshot_file(registry.path)
         result = registry.add_many(
             values,

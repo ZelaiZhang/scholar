@@ -180,10 +180,27 @@ def _candidate_record(
 
 
 class SourceRegistry:
-    def __init__(self, path: Path):
+    def __init__(
+        self,
+        path: Path,
+        *,
+        expected_parent_identity: tuple[int, int] | None = None,
+    ):
         self.path = path
+        self.expected_parent_identity = expected_parent_identity
+
+    def _assert_parent_identity(self) -> None:
+        if self.expected_parent_identity is None:
+            return
+        metadata = self.path.parent.stat()
+        current_identity = (metadata.st_dev, metadata.st_ino)
+        if current_identity != self.expected_parent_identity:
+            raise OSError(
+                f"来源登记目录在操作期间被替换: {self.path.parent}"
+            )
 
     def _read(self) -> list[SourceRecord]:
+        self._assert_parent_identity()
         if not self.path.exists():
             return []
         records: list[SourceRecord] = []
@@ -219,11 +236,17 @@ class SourceRegistry:
         return verified
 
     def _write(self, records: list[SourceRecord]) -> None:
+        self._assert_parent_identity()
         serialized = "\n".join(
             json.dumps(asdict(item), ensure_ascii=False, sort_keys=True)
             for item in records
         )
-        atomic_write_text(self.path, f"{serialized}\n")
+        atomic_write_text(
+            self.path,
+            f"{serialized}\n",
+            expected_parent_identity=self.expected_parent_identity,
+        )
+        self._assert_parent_identity()
 
     def add(
         self,

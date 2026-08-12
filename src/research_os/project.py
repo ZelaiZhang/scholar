@@ -106,7 +106,12 @@ def _manifest_path(project_path: Path) -> Path:
     return project_path / "project.yaml"
 
 
-def write_project_manifest(project_path: Path, manifest: ProjectManifest) -> None:
+def write_project_manifest(
+    project_path: Path,
+    manifest: ProjectManifest,
+    *,
+    expected_directory_identity: tuple[int, int] | None = None,
+) -> None:
     payload = {
         "schema_version": manifest.schema_version,
         "title": manifest.title,
@@ -117,6 +122,7 @@ def write_project_manifest(project_path: Path, manifest: ProjectManifest) -> Non
     atomic_write_text(
         _manifest_path(project_path),
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+        expected_parent_identity=expected_directory_identity,
     )
 
 
@@ -172,10 +178,19 @@ def load_project_manifest(
     )
 
 
-def link_project_sources(workspace: Path, slug: str, source_ids: list[str]) -> None:
+def link_project_sources(
+    workspace: Path,
+    slug: str,
+    source_ids: list[str],
+    expected_directory_identity: tuple[int, int] | None = None,
+) -> None:
     if any(not item.startswith("src-") for item in source_ids):
         raise ValueError("source_id 必须以 src- 开头")
     project_path = resolve_project_path(workspace, slug, require_exists=True)
+    if expected_directory_identity is not None:
+        metadata = project_path.stat()
+        if (metadata.st_dev, metadata.st_ino) != expected_directory_identity:
+            raise OSError(f"课题目录在关联提交前被替换: {project_path}")
     manifest = load_project_manifest(project_path, allow_legacy=True)
     ordered = list(manifest.source_ids)
     for source_id in source_ids:
@@ -191,6 +206,7 @@ def link_project_sources(workspace: Path, slug: str, source_ids: list[str]) -> N
             or datetime.now(timezone.utc).isoformat(),
             source_ids=tuple(ordered),
         ),
+        expected_directory_identity=expected_directory_identity,
     )
 
 

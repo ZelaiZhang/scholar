@@ -680,6 +680,87 @@ def test_cli_rollback_never_overwrites_replacement_project_directory(
     assert not (tmp_path / "library" / "sources.jsonl").exists()
 
 
+def test_cli_source_write_rejects_mid_command_library_link_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    library = tmp_path / "library"
+    library.mkdir()
+    moved_library = tmp_path / "moved-library"
+    outside = tmp_path / "outside-library"
+    outside.mkdir()
+    real_add = cli_module.SourceRegistry.add
+
+    def replace_library_then_add(registry, *args, **kwargs):
+        library.rename(moved_library)
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(library), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            library.symlink_to(outside, target_is_directory=True)
+        return real_add(registry, *args, **kwargs)
+
+    monkeypatch.setattr(
+        cli_module.SourceRegistry, "add", replace_library_then_add
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-mid-command-external-write",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (outside / "sources.jsonl").exists()
+    assert not (moved_library / "sources.jsonl").exists()
+    assert load_project_manifest(project).source_ids == ()
+
+
+def test_cli_project_write_rejects_mid_command_directory_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_project = create_project(tmp_path, "A", "topic-a")
+    moved_project = tmp_path / "moved-project"
+    real_link = cli_module.link_project_sources
+
+    def replace_project_then_link(*args, **kwargs):
+        original_project.rename(moved_project)
+        create_project(tmp_path, "Replacement", "topic-a")
+        return real_link(*args, **kwargs)
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", replace_project_then_link
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-mid-command-project-write",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    replacement = tmp_path / "projects" / "topic-a"
+    assert exit_code == 2
+    assert load_project_manifest(moved_project).source_ids == ()
+    assert load_project_manifest(replacement).source_ids == ()
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+
+
 def test_cli_preflights_project_before_registering_single_source(
     tmp_path: Path,
 ) -> None:
