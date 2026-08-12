@@ -197,6 +197,10 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     assert dashboard_payload["schema_version"] == 1
     assert dashboard_payload["as_of"] == "2026-08-12"
     assert dashboard_payload["project"]["slug"] == "wheel-topic"
+    assert dashboard_payload["idea"]["candidate_generation_complete"] is False
+    assert dashboard_payload["idea"]["novelty_check_complete"] is False
+    assert dashboard_payload["idea"]["independent_review_complete"] is False
+    assert dashboard_payload["idea"]["meta_review_complete"] is False
     assert len(dashboard_payload["actions"]) <= 3
     assert workspace_bytes(workspace) == dashboard_before
 

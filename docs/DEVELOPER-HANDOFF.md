@@ -43,7 +43,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 18. 只读、可固定日期的知识维护缺口队列。
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 
-截至本文档更新，v0.5.0 完整测试为 `259 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
+截至本文档更新，v0.5.0 完整测试为 `270 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
 
 ## 3. 系统总览
 
@@ -434,6 +434,15 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 6. `dashboard_risks.py` 只接受不可变结构化事实，输出带稳定 code、severity、state 和 trigger 的风险；
 7. 行动固定按 repair、workflow、evidence、methodology 排序，并按完整命令去重后截取前三项；
 8. CLI 显式序列化 schema version 1，避免内部 dataclass 变化悄悄破坏 JSON。
+
+发布复审后的加固：
+
+- 来源 ID 必须是小写字母数字与单连字符组成的安全标识，不能把 shell 语法带入可复制命令；
+- project manifest、账本、知识画像、ideas 目录与 archive 都必须是课题内真实直接文件/目录，链接和 reparse point 失败关闭；
+- 方法知识库存在但损坏时 dashboard 返回错误码 2 和 `kb doctor` 提示，不静默伪装为“暂无推荐”；
+- 只有没有 claim 级校验问题的证据才进入健康统计；
+- Idea archive 必须同时绑定当前 project slug 与 active run；
+- 候选生成、新颖性、独立评审和 meta-review 四个门禁只有在 `validate_cycle_artifacts` 验证冻结哈希、review run_id 和 selected Idea 后才标记完成。
 
 新增或修改风险规则时，必须先在 `tests/test_dashboard.py` 写出可复现的结构化触发和 unknown 反例。不得扫描研究简报、claim statement 或模型输出关键词后声称发现医疗缺陷。新增行动命令必须来自现有受控 CLI/技能契约，不能把来源 notes、claim 文本或其他不可信内容拼进 shell 命令。
 
