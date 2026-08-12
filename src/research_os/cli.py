@@ -11,7 +11,7 @@ from research_os.io import atomic_write_text
 from research_os.pdf import extract_pdf
 from research_os.project import create_project
 from research_os.provider import OpenAICompatibleProvider
-from research_os.sources import SourceRegistry, authorize_external_files
+from research_os.sources import SourceRegistry, load_authorized_external_texts
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -102,9 +102,18 @@ def _run(args: argparse.Namespace) -> int:
         print(f"已提取 {len(result.pages)} 页: {args.output.resolve()}")
         return 0
     if args.command == "model-call":
-        if args.output.exists():
-            raise FileExistsError(f"模型输出已存在，不自动覆盖: {args.output}")
-        authorize_external_files(
+        output = args.output.resolve()
+        provenance_path = output.with_name(f"{output.name}.provenance.json")
+        input_paths = {args.system.resolve(), args.user.resolve()}
+        if output.exists():
+            raise FileExistsError(f"模型输出已存在，不自动覆盖: {output}")
+        if provenance_path in input_paths:
+            raise ValueError("provenance 输出不能覆盖 system 或 user 输入")
+        if provenance_path.exists():
+            raise FileExistsError(
+                f"provenance 输出已存在，不自动覆盖: {provenance_path}"
+            )
+        system_text, user_text = load_authorized_external_texts(
             args.workspace.resolve() / "library" / "sources.jsonl",
             [args.system, args.user],
             args.source_id,
@@ -117,13 +126,11 @@ def _run(args: argparse.Namespace) -> int:
             timeout=args.timeout,
         )
         result = provider.complete(
-            args.system.read_text(encoding="utf-8"),
-            args.user.read_text(encoding="utf-8"),
+            system_text,
+            user_text,
             external_api_allowed=args.allow_external_api,
         )
-        output = args.output.resolve()
         atomic_write_text(output, result.content)
-        provenance_path = output.with_name(f"{output.name}.provenance.json")
         atomic_write_text(
             provenance_path,
             json.dumps(result.provenance, ensure_ascii=False, indent=2) + "\n",
@@ -135,7 +142,7 @@ def _run(args: argparse.Namespace) -> int:
         registry = SourceRegistry(
             args.workspace.resolve() / "library" / "sources.jsonl"
         )
-        known_source_ids = {record.source_id for record in registry.records()}
+        known_source_ids = registry.verified_source_ids()
         issues = validate_ledger(
             load_ledger(args.ledger), known_source_ids=known_source_ids
         )

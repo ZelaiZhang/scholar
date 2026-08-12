@@ -9,6 +9,7 @@ from research_os.sources import (
     SourceRegistry,
     authorize_external_files,
     authorize_external_sources,
+    load_authorized_external_texts,
     normalize_source,
 )
 
@@ -162,3 +163,35 @@ def test_external_payload_files_must_match_the_authorized_source_ids(
             [system, user],
             [system_record.source_id, unrelated_record.source_id],
         )
+
+
+def test_authorized_external_text_is_a_verified_immutable_snapshot(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("authorized public prompt", encoding="utf-8")
+    registry = SourceRegistry(tmp_path / "sources.jsonl")
+    record = registry.add(str(prompt), external_api_allowed=True)
+
+    (snapshot,) = load_authorized_external_texts(
+        registry.path, [prompt], [record.source_id]
+    )
+    prompt.write_text("replacement after authorization", encoding="utf-8")
+
+    assert snapshot == "authorized public prompt"
+
+
+def test_verified_source_ids_exclude_changed_or_missing_local_files(
+    tmp_path: Path,
+) -> None:
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(b"version one")
+    registry = SourceRegistry(tmp_path / "sources.jsonl")
+    record = registry.add(str(paper))
+    assert record.source_id in registry.verified_source_ids()
+
+    paper.write_bytes(b"version two")
+    assert record.source_id not in registry.verified_source_ids()
+
+    paper.unlink()
+    assert record.source_id not in registry.verified_source_ids()

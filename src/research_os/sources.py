@@ -117,6 +117,21 @@ class SourceRegistry:
     def records(self) -> tuple[SourceRecord, ...]:
         return tuple(self._read())
 
+    def verified_source_ids(self) -> set[str]:
+        verified: set[str] = set()
+        for record in self._read():
+            if record.kind != "file":
+                verified.add(record.source_id)
+                continue
+            path = Path(record.canonical)
+            if (
+                record.content_hash is not None
+                and path.is_file()
+                and hash_file(path) == record.content_hash
+            ):
+                verified.add(record.source_id)
+        return verified
+
     def _write(self, records: list[SourceRecord]) -> None:
         serialized = "\n".join(
             json.dumps(asdict(item), ensure_ascii=False, sort_keys=True)
@@ -194,3 +209,29 @@ def authorize_external_files(
                 f"请求文件未被 source_id 授权: {resolved} ({current_id})"
             )
     return authorized
+
+
+def load_authorized_external_texts(
+    registry_path: Path,
+    payload_files: list[Path],
+    source_ids: list[str],
+) -> tuple[str, ...]:
+    authorized = authorize_external_sources(registry_path, source_ids)
+    authorized_ids = {record.source_id for record in authorized}
+    texts: list[str] = []
+    for payload_file in payload_files:
+        resolved = payload_file.resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(resolved)
+        raw = resolved.read_bytes()
+        current_hash = hashlib.sha256(raw).hexdigest()
+        current_id = make_source_id("file", current_hash)
+        if current_id not in authorized_ids:
+            raise SourceAuthorizationError(
+                f"请求文件未被 source_id 授权: {resolved} ({current_id})"
+            )
+        try:
+            texts.append(raw.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise InvalidSourceError(f"外部模型文本必须是 UTF-8: {resolved}") from exc
+    return tuple(texts)
