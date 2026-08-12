@@ -90,6 +90,248 @@ class MeetingBrief:
     actions: tuple[DashboardAction, ...]
 
 
+def _reference_payload(reference: EvidenceReference) -> dict[str, str]:
+    return {
+        "source_id": reference.source_id,
+        "locator": reference.locator,
+    }
+
+
+def _claim_payload(claim: BriefClaim) -> dict[str, object]:
+    return {
+        "claim_id": claim.claim_id,
+        "statement": claim.statement,
+        "type": claim.claim_type,
+        "status": claim.status,
+        "confidence": claim.confidence,
+        "support": [_reference_payload(item) for item in claim.support],
+        "opposition": [_reference_payload(item) for item in claim.opposition],
+        "limitations": claim.limitations,
+    }
+
+
+def meeting_brief_payload(brief: MeetingBrief) -> dict[str, object]:
+    return {
+        "schema_version": brief.schema_version,
+        "as_of": brief.as_of,
+        "project": {
+            "title": brief.project.title,
+            "slug": brief.project.slug,
+            "stage": brief.project.stage,
+            "state": brief.project.state,
+            "blockers": list(brief.project.blockers),
+        },
+        "evidence": {
+            "supported": [_claim_payload(item) for item in brief.supported_claims],
+            "conflicted": [_claim_payload(item) for item in brief.conflicted_claims],
+            "open": [_claim_payload(item) for item in brief.open_claims],
+            "excluded": [
+                {
+                    "claim_id": item.claim_id,
+                    "statement": item.statement,
+                    "issues": [
+                        {
+                            "code": issue.code,
+                            "message": issue.message,
+                        }
+                        for issue in item.issues
+                    ],
+                }
+                for item in brief.excluded_claims
+            ],
+        },
+        "ideas": [
+            {
+                "run_id": item.run_id,
+                "idea_id": item.idea_id,
+                "title": item.title,
+                "scientific_question": item.scientific_question,
+                "hypothesis": item.hypothesis,
+                "contribution": item.contribution,
+                "evidence_source_ids": list(item.evidence_source_ids),
+                "novelty_status": item.novelty_status,
+                "scores": dict(item.scores),
+                "method_risks": list(item.method_risks),
+                "medical_safety_risks": list(item.medical_safety_risks),
+                "failure_criterion": item.failure_criterion,
+                "external_experiment": item.external_experiment,
+                "status": item.status,
+                "decision_reason": item.decision_reason,
+            }
+            for item in brief.ideas
+        ],
+        "discussion_questions": [
+            {
+                "code": item.code,
+                "prompt": item.prompt,
+                "rationale": item.rationale,
+            }
+            for item in brief.questions
+        ],
+        "recommendations": [
+            {
+                "kind": item.kind,
+                "title": item.title,
+                "source_id": item.source_id,
+                "reason": item.reason,
+                "verification_scope": item.verification_scope,
+                "can_use_for": item.can_use_for,
+                "cannot_use_for": item.cannot_use_for,
+                "path": str(item.path) if item.path is not None else None,
+            }
+            for item in brief.recommendations
+        ],
+        "risks": [
+            {
+                "code": item.code,
+                "severity": item.severity,
+                "state": item.state,
+                "message": item.message,
+                "trigger": item.trigger,
+            }
+            for item in brief.risks
+        ],
+        "actions": [
+            {
+                "code": item.code,
+                "priority": item.priority,
+                "category": item.category,
+                "rationale": item.rationale,
+                "expected_artifact": item.expected_artifact,
+                "command": item.command,
+            }
+            for item in brief.actions
+        ],
+    }
+
+
+def _render_references(references: tuple[EvidenceReference, ...]) -> str:
+    if not references:
+        return "-"
+    return "；".join(
+        f"source_id=`{item.source_id}`，locator=`{item.locator}`"
+        for item in references
+    )
+
+
+def _render_claim_section(
+    title: str,
+    claims: tuple[BriefClaim, ...],
+) -> list[str]:
+    lines = [f"## {title}", ""]
+    if not claims:
+        return lines + ["- 无。", ""]
+    for item in claims:
+        lines.extend(
+            [
+                f"### {item.claim_id} · {item.claim_type}/{item.status}",
+                "",
+                f"- 陈述: {item.statement}",
+                f"- 置信度: {item.confidence}",
+                f"- 支持: {_render_references(item.support)}",
+                f"- 反对: {_render_references(item.opposition)}",
+                f"- 限制: {item.limitations}",
+                "",
+            ]
+        )
+    return lines
+
+
+def render_meeting_brief(brief: MeetingBrief) -> str:
+    lines = [
+        f"# {brief.project.title} · 组会研究决策简报",
+        "",
+        f"- 课题: `{brief.project.slug}`",
+        f"- 截止日期: {brief.as_of}",
+        f"- 当前阶段/状态: {brief.project.stage} / {brief.project.state}",
+        "- 边界: 只读、本地、无外部 API；本简报不是临床决策支持。",
+        "",
+    ]
+    lines.extend(_render_claim_section("已支持的结论", brief.supported_claims))
+    lines.extend(_render_claim_section("存在冲突的结论", brief.conflicted_claims))
+    lines.extend(_render_claim_section("仍待核验的主张", brief.open_claims))
+    lines.extend(["## 因证据问题而排除", ""])
+    if brief.excluded_claims:
+        for item in brief.excluded_claims:
+            issue_text = "；".join(
+                f"{issue.code}: {issue.message}" for issue in item.issues
+            )
+            lines.append(
+                f"- `{item.claim_id}` {item.statement or '-'}（{issue_text or '结构无效'}）"
+            )
+        lines.append("")
+    else:
+        lines.extend(["- 无。", ""])
+    lines.extend(["## 当前 Idea 与失败边界", ""])
+    if brief.ideas:
+        for idea in brief.ideas:
+            scores = "，".join(f"{key}={value}" for key, value in idea.scores)
+            lines.extend(
+                [
+                    f"### {idea.idea_id} · {idea.title} [{idea.status}]",
+                    "",
+                    f"- 科学问题: {idea.scientific_question}",
+                    f"- 假设: {idea.hypothesis}",
+                    f"- 贡献: {idea.contribution}",
+                    f"- 证据来源: {', '.join(idea.evidence_source_ids) or '-'}",
+                    f"- 新颖性/评分: {idea.novelty_status}；{scores}",
+                    f"- 方法风险: {'；'.join(idea.method_risks) or '-'}",
+                    f"- 医疗安全风险: {'；'.join(idea.medical_safety_risks) or '-'}",
+                    f"- 失败判据: {idea.failure_criterion}",
+                    f"- 外部实验边界: {idea.external_experiment}",
+                    f"- 人工决定理由: {idea.decision_reason or '-'}",
+                    "",
+                ]
+            )
+    else:
+        lines.extend(["- 尚未启动或尚无通过当前门禁的 Idea。", ""])
+    lines.extend(["## 需要导师讨论的问题", ""])
+    if brief.questions:
+        for index, item in enumerate(brief.questions, 1):
+            lines.extend(
+                [
+                    f"{index}. **{item.prompt}**",
+                    f"   - 依据: {item.rationale}",
+                ]
+            )
+        lines.append("")
+    else:
+        lines.extend(["- 当前没有可由结构化事实安全生成的问题。", ""])
+    lines.extend(
+        [
+            "## 方法学参考",
+            "",
+            "以下条目只用于方法指导，不会自动成为当前课题引用证据。",
+        ]
+    )
+    if brief.recommendations:
+        lines.extend(
+            f"- **{item.title}** [{item.verification_scope}]：{item.reason}"
+            for item in brief.recommendations
+        )
+    else:
+        lines.append("- 当前没有可用推荐。")
+    lines.extend(["", "## 下一步", ""])
+    if brief.actions:
+        for index, item in enumerate(brief.actions, 1):
+            lines.extend(
+                [
+                    f"### {index}. {item.code}",
+                    "",
+                    f"- 原因: {item.rationale}",
+                    f"- 预期产物: `{item.expected_artifact}`",
+                    "",
+                    "```text",
+                    item.command,
+                    "```",
+                    "",
+                ]
+            )
+    else:
+        lines.append("- 当前没有可安全执行的行动。")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _claim_id(raw: dict[str, object], index: int) -> str:
     return str(raw.get("claim_id", "")).strip() or f"item-{index}"
 

@@ -25,6 +25,11 @@ from research_os.knowledge import (
 from research_os.knowledge_gaps import GAP_KINDS, GapFilters, find_knowledge_gaps
 from research_os.knowledge_recommend import recommend_for_project
 from research_os.knowledge_search import SearchFilters, search_knowledge
+from research_os.meeting_brief import (
+    build_meeting_brief,
+    meeting_brief_payload,
+    render_meeting_brief,
+)
 from research_os.pdf import extract_pdf
 from research_os.project import (
     create_project,
@@ -71,6 +76,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--format", choices=("text", "json"), default="text"
     )
     dashboard_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    meeting_parser = subparsers.add_parser(
+        "meeting-brief",
+        help="生成证据绑定的组会研究决策简报",
+    )
+    meeting_parser.add_argument("--project", required=True, help="课题 slug")
+    meeting_parser.add_argument(
+        "--as-of", default="", help="简报截止日期 YYYY-MM-DD"
+    )
+    meeting_parser.add_argument(
+        "--format", choices=("markdown", "json"), default="markdown"
+    )
+    meeting_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     cycle_parser = subparsers.add_parser(
         "cycle", help="创建或恢复有界、可审计的科研循环"
@@ -763,6 +781,30 @@ def _run(args: argparse.Namespace) -> int:
             )
         else:
             print(_render_dashboard(snapshot), end="")
+        return 0
+    if args.command == "meeting-brief":
+        if args.as_of:
+            try:
+                as_of = date.fromisoformat(args.as_of)
+            except ValueError as exc:
+                raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
+        else:
+            as_of = date.today()
+        brief = build_meeting_brief(
+            args.workspace,
+            args.project,
+            as_of=as_of,
+        )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    meeting_brief_payload(brief),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(render_meeting_brief(brief), end="")
         return 0
     if args.command == "kb":
         if args.kb_command == "doctor":
