@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from research_os.knowledge import (
@@ -30,12 +31,45 @@ class SearchResult:
     matched_fields: tuple[str, ...]
 
 
+def _is_cjk(character: str) -> bool:
+    codepoint = ord(character)
+    return any(
+        lower <= codepoint <= upper
+        for lower, upper in (
+            (0x3400, 0x4DBF),
+            (0x4E00, 0x9FFF),
+            (0xF900, 0xFAFF),
+            (0x3040, 0x30FF),
+            (0xAC00, 0xD7AF),
+        )
+    )
+
+
+def _segment_tokens(segment: str) -> set[str]:
+    tokens: set[str] = set()
+    start = 0
+    while start < len(segment):
+        cjk = _is_cjk(segment[start])
+        end = start + 1
+        while end < len(segment) and _is_cjk(segment[end]) == cjk:
+            end += 1
+        run = segment[start:end]
+        if cjk:
+            tokens.add(run)
+            if len(run) > 1:
+                tokens.update(run[index : index + 2] for index in range(len(run) - 1))
+        else:
+            tokens.add(run)
+        start = end
+    return tokens
+
+
 def _tokens(value: str) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[^\W_]+", value.casefold(), flags=re.UNICODE)
-        if token
-    }
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    tokens: set[str] = set()
+    for segment in re.findall(r"[^\W_]+", normalized, flags=re.UNICODE):
+        tokens.update(_segment_tokens(segment))
+    return tokens
 
 
 def _field_score(

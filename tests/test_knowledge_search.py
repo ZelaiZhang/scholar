@@ -94,6 +94,48 @@ def test_search_uses_title_alias_heading_and_body_weights() -> None:
     assert [result.score for result in results] == [8, 6, 2, 1]
 
 
+def test_search_matches_shorter_cjk_query_inside_curated_alias() -> None:
+    diagnosis = _entry(
+        "src-0000000000000001", title="STARD-AI diagnostic reporting"
+    )
+    reasoning = _entry(
+        "src-0000000000000002", title="Chain-of-Thought prompting"
+    )
+    kb = KnowledgeBase(
+        root=Path("knowledge"),
+        entries=(diagnosis, reasoning),
+        cards={},
+        aliases={
+            diagnosis.source_id: ("人工智能诊断准确性报告规范",),
+            reasoning.source_id: ("逐步思维链推理",),
+        },
+    )
+
+    diagnosis_results = search_knowledge(kb, "诊断准确性", limit=10)
+    reasoning_results = search_knowledge(kb, "思维链", limit=10)
+
+    assert [result.entry.source_id for result in diagnosis_results] == [
+        diagnosis.source_id
+    ]
+    assert diagnosis_results[0].matched_fields == ("alias",)
+    assert [result.entry.source_id for result in reasoning_results] == [
+        reasoning.source_id
+    ]
+    assert reasoning_results[0].matched_fields == ("alias",)
+
+
+def test_search_normalizes_full_width_latin() -> None:
+    entry = _entry("src-0000000000000001", title="QLoRA")
+    kb = KnowledgeBase(
+        root=Path("knowledge"), entries=(entry,), cards={}, aliases={}
+    )
+
+    results = search_knowledge(kb, "ＱＬｏＲＡ", limit=10)
+
+    assert [result.entry.source_id for result in results] == [entry.source_id]
+    assert results[0].matched_fields == ("title",)
+
+
 def test_search_topic_method_and_stage_filters_are_exact() -> None:
     match = _entry(
         "src-0000000000000001",
