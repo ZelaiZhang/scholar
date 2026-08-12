@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-12；包版本：`0.4.0`；功能基线以本文档所在提交为准。
+> 最后核对：2026-08-12；包版本：`0.4.1`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.4.0`，已经完成：
+当前稳定版本是 `v0.4.1`，已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -38,9 +38,11 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 13. 源码安装、wheel 安装和关键用户旅程测试；
 14. 结构化科研方法知识库、确定性搜索和课题推荐；
 15. 28 条专业种子来源、17 张知识卡、5 张主题地图和 4 份方法手册；
-16. 医疗 AI 报告规范路由和知识库完整性检查。
+16. 医疗 AI 报告规范路由和知识库完整性检查；
+17. NFKC/CJK 词片和人工双语别名驱动的中文知识检索；
+18. 只读、可固定日期的知识维护缺口队列。
 
-截至本文档更新，v0.4 完整测试为 `230 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令。
+截至本文档更新，v0.4.1 完整测试为 `244 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令。
 
 ## 3. 系统总览
 
@@ -131,6 +133,7 @@ flowchart LR
 | `model-call` | 发起一次受控 OpenAI-compatible API 调用 | 是 | 是，必须显式授权 |
 | `kb doctor` | 检查目录、卡片、来源、定位、替代关系和资产引用 | 否 | 否 |
 | `kb search` | 按固定权重执行本地可解释检索 | 否 | 否 |
+| `kb gaps` | 确定性列出缺卡、核验、全文升级和过期复核任务 | 否 | 否 |
 | `kb recommend` | 根据课题画像和 guide 阶段返回最多三项参考 | 否 | 否 |
 
 日常入口：
@@ -165,7 +168,8 @@ flowchart LR
 
 ```powershell
 .\.venv\Scripts\research-os.exe kb doctor
-.\.venv\Scripts\research-os.exe kb search "diagnostic accuracy" --topic medical-ai
+.\.venv\Scripts\research-os.exe kb search "诊断准确性" --topic medical-ai
+.\.venv\Scripts\research-os.exe kb gaps --as-of 2026-08-12 --limit 20
 .\.venv\Scripts\research-os.exe kb recommend --project medical-reasoning
 ```
 
@@ -302,7 +306,8 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `doctor.py` | 只读工作区完整性检查 | 任何数据损坏都应转为可读 FAIL，而不是异常崩溃 |
 | `io.py` | 原子写入和 create-only 基元 | 不要退化为普通覆盖写 |
 | `knowledge.py` | catalog/card/profile schema、来源和路径校验、KB doctor | 阅读范围和 locator 门禁不能放宽 |
-| `knowledge_search.py` | 固定权重检索和稳定排序 | 禁止引入随机、联网或不可解释排序 |
+| `knowledge_search.py` | Unicode/CJK token、固定权重检索和稳定排序 | 禁止引入随机、联网或不可解释排序 |
+| `knowledge_gaps.py` | 纯函数式知识维护分类、过滤和稳定排序 | 必须只读；固定日期应产生相同结果 |
 | `knowledge_recommend.py` | 课题画像、阶段、手册和报告规范推荐 | 最多三项，绝不自动关联项目证据 |
 
 ## 13. 开发与验证
@@ -340,7 +345,9 @@ git diff --check
 - `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`：每日驾驶舱；
 - `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`：有界 AI Co-Researcher；
 - `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`：v0.4 专业知识库设计；
-- `docs/superpowers/plans/2026-08-12-research-methods-knowledge-base.md`：v0.4 TDD 实施计划。
+- `docs/superpowers/plans/2026-08-12-research-methods-knowledge-base.md`：v0.4 TDD 实施计划；
+- `docs/superpowers/specs/2026-08-12-bilingual-knowledge-search-design.md`：v0.4.1 中文检索与维护队列；
+- `docs/superpowers/plans/2026-08-12-bilingual-search-and-gaps.md`：v0.4.1 TDD 实施计划。
 
 关键提交脉络：
 
@@ -362,19 +369,23 @@ git diff --check
 | `4b5c6f8` | `kb` CLI |
 | `f7aa067` | `guide` 和 `doctor` 集成 |
 | `bc0b34b` | v0.4 专业种子知识库 |
+| `9e836b5` | Unicode/NFKC 与 CJK 确定性检索 |
+| `b5dee43` | 28 条种子来源的人工双语别名 |
+| `0bf1500` | 纯函数式知识维护缺口分类 |
+| `9ff5f8c` | `kb gaps` 只读 CLI |
 
 ## 15. 已知限制与技术债
 
 - 本仓库不执行实验，只把流程推进到严谨实验设计并接收外部聚合结果；
 - 当前没有向量数据库、embedding 检索或知识图谱服务；
 - 当前没有自动在线刷新论文和指南，来源仍需登记和核验；
-- 当前知识库有 28 条种子来源和 17 张卡；仍需逐步把摘要卡升级为全文卡，并定期核对规范更正与版本；
+- 当前知识库有 28 条种子来源和 17 张卡；`kb gaps` 已能列出缺卡、摘要升级和过期复核任务，但实际原文核验仍需人工完成；
 - 医疗敏感字段拦截是保守关键词检查，不可替代机构数据治理和伦理审批；
 - `cycle.py` 体积较大，未来可按状态阶段、事务和 provider 提交拆分，但必须保持现有恢复/并发测试；
 - 自动评审是研究质量辅助信号，不能替代导师、同行评审、统计复核或临床验证；
 - 软件尚未承诺稳定公共 Python API，现阶段优先保持 CLI 和文件格式兼容。
 
-## 16. v0.4 专业知识库：已实现
+## 16. v0.4.1 专业知识库：已实现
 
 > **实现状态：CLI、严格数据模型、确定性检索、推荐、guide/doctor 集成与种子资产均已存在。**
 
@@ -382,12 +393,12 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 
 - `library/knowledge/catalog.yaml` 统一目录；
 - 方法卡、主题地图、场景 playbook 和医学报告规范；
-- `kb search`、`kb recommend`、`kb doctor`；
+- `kb search`、`kb gaps`、`kb recommend`、`kb doctor`；
 - 28 条医疗 AI、推理、RAG、LoRA/QLoRA、DPO/RLHF、量化、评测与报告指南来源；
 - 17 张知识卡，其中 10 张标记为全文/官方开放网页正文核验；
 - 5 张主题地图、4 份方法手册和 1 份医疗 AI 报告规范矩阵；
 - 可选的课题 `knowledge-profile.yaml`；
-- 确定性检索、来源分级、版本/失效日期和课题证据隔离。
+- 中英双语确定性检索、只读维护队列、来源分级、版本/失效日期和课题证据隔离。
 
 完整规格见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`。后续重点是全文核验、版本维护与真实课题走查；达到至少 100 张核验卡前，不引入向量数据库。
 

@@ -90,6 +90,39 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     assert code == 0, kb_search
     search_payload = json.loads(kb_search)
     assert search_payload and search_payload[0]["source_id"].startswith("src-")
+    code, chinese_search = run_cli(
+        [
+            "kb",
+            "search",
+            "诊断准确性",
+            "--format",
+            "json",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+    assert code == 0, chinese_search
+    chinese_payload = json.loads(chinese_search)
+    assert "STARD-AI" in chinese_payload[0]["title"]
+    assert "alias" in chinese_payload[0]["matched_fields"]
+    project_before_gaps = (project / "project.yaml").read_bytes()
+    gaps_args = [
+        "kb",
+        "gaps",
+        "--as-of",
+        "2026-08-12",
+        "--format",
+        "json",
+        "--workspace",
+        str(workspace),
+    ]
+    code, first_gaps = run_cli(gaps_args)
+    assert code == 0, first_gaps
+    code, second_gaps = run_cli(gaps_args)
+    assert code == 0 and second_gaps == first_gaps, second_gaps
+    gaps_payload = json.loads(first_gaps)
+    assert gaps_payload and gaps_payload[0]["kind"] == "missing-card"
+    assert (project / "project.yaml").read_bytes() == project_before_gaps
     code, kb_recommend = run_cli(
         [
             "kb",

@@ -239,7 +239,7 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 
 命令同时检查调用级许可、来源级许可和当前文件哈希。成功后生成同名 `.provenance.json`，记录模型、参数、时间、用量和提示词哈希，但不记录 Key。配置参考 `config/providers.example.yaml`。
 
-## v0.4 专业科研方法知识库
+## v0.4.1 专业科研方法知识库
 
 知识库不是随意堆积的 PDF 或模型记忆。`library/knowledge/catalog.yaml` 和带阅读范围、locator 的知识卡是唯一真源；主题地图与方法手册提供阅读和操作入口。当前种子库包含医疗 AI、诊断推理、CoT、RAG、LoRA/QLoRA、量化、DPO/RLHF、AI 科研自动化和医疗报告规范。
 
@@ -258,6 +258,24 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
   --verified-scope abstract `
   --limit 5
 ```
+
+中文查询会经过本地 Unicode 规范化和 CJK 词片匹配，并优先使用人工维护的双语专业别名：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb search "诊断准确性" --limit 5
+.\.venv\Scripts\research-os.exe kb search "思维链" --limit 5
+.\.venv\Scripts\research-os.exe kb search "微调量化" --limit 5
+```
+
+查看知识库维护缺口：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb gaps `
+  --as-of 2026-08-12 `
+  --limit 20
+```
+
+`kb gaps` 按 `watch-review → metadata-review → missing-card → abstract-review → fulltext-upgrade → stale-review` 排序。它只输出维护建议，不联网、不改 catalog、卡片、核验状态或课题文件；`--as-of` 可固定复核日期，便于重复得到相同 JSON。
 
 为课题生成最多三项阶段化方法参考：
 
@@ -313,6 +331,7 @@ validate-ledger   校验证据账本
 model-call        调用显式授权的外部模型
 kb doctor         检查知识目录、卡片、来源与引用
 kb search         确定性本地方法学检索
+kb gaps           只读列出知识核验与卡片维护缺口
 kb recommend      按课题画像和阶段推荐最多三项参考
 ```
 
@@ -335,6 +354,7 @@ git diff --check
 - `doctor` 校验 run 状态、冻结产物哈希、三路评审、人工 selected Idea，以及 journal 中引用的 run 和产物是否真实存在。
 - `kb doctor` 校验 catalog schema、来源登记、阅读范围、全文 locator、替代关系、陈旧复核、知识资产引用和路径安全。
 - `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。
+- `kb search` 使用 NFKC、CJK 二元词片和人工双语别名支持中文术语；`kb gaps` 只读生成确定性维护队列。
 - 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
 - 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
