@@ -167,21 +167,33 @@ def _link_sources_transactionally(
 ) -> None:
     if slug is None:
         return
-    project_manifest = resolve_project_path(
-        workspace, slug, require_exists=True
-    ) / "project.yaml"
-    project_snapshot = _snapshot_file(project_manifest)
+    project_manifest: Path | None = None
+    project_snapshot: bytes | None = None
     try:
+        candidate_manifest = resolve_project_path(
+            workspace, slug, require_exists=True
+        ) / "project.yaml"
+        candidate_snapshot = _snapshot_file(candidate_manifest)
+        project_manifest = candidate_manifest
+        project_snapshot = candidate_snapshot
         link_project_sources(workspace, slug, source_ids)
     except BaseException:
-        rollback_errors: list[OSError] = []
-        for path, snapshot in (
-            (registry_path, registry_snapshot),
-            (project_manifest, project_snapshot),
-        ):
+        rollback_errors: list[Exception] = []
+        try:
+            _restore_file(registry_path, registry_snapshot)
+        except OSError as rollback_error:
+            rollback_errors.append(rollback_error)
+        if project_manifest is not None:
             try:
-                _restore_file(path, snapshot)
-            except OSError as rollback_error:
+                current_manifest = resolve_project_path(
+                    workspace, slug, require_exists=True
+                ) / "project.yaml"
+                if current_manifest != project_manifest:
+                    raise OSError(
+                        f"课题路径在回滚前发生改变: {current_manifest}"
+                    )
+                _restore_file(project_manifest, project_snapshot)
+            except (OSError, ValueError) as rollback_error:
                 rollback_errors.append(rollback_error)
         if rollback_errors:
             raise RuntimeError(

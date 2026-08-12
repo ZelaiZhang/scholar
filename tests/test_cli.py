@@ -479,6 +479,84 @@ def test_cli_batch_rolls_back_registry_when_project_link_fails(
     assert load_project_manifest(project).source_ids == ()
 
 
+def test_cli_rolls_back_registry_when_project_disappears_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    real_resolve = cli_module.resolve_project_path
+    calls = 0
+
+    def fail_second_resolve(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ValueError("simulated project replacement")
+        return real_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(cli_module, "resolve_project_path", fail_second_resolve)
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/must-roll-back",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+    assert load_project_manifest(project).source_ids == ()
+
+
+def test_cli_rollback_never_writes_through_replaced_project_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    moved_project = tmp_path / "moved-project"
+    outside = tmp_path / "outside-project"
+    outside.mkdir()
+    outside_manifest = outside / "project.yaml"
+    outside_manifest.write_text("external sentinel\n", encoding="utf-8")
+
+    def replace_project_then_fail(*_args) -> None:
+        project.rename(moved_project)
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(project), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            project.symlink_to(outside, target_is_directory=True)
+        raise OSError("simulated replacement during linking")
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", replace_project_then_fail
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-external-rollback",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+    assert outside_manifest.read_text(encoding="utf-8") == "external sentinel\n"
+    assert load_project_manifest(moved_project).source_ids == ()
+
+
 def test_cli_preflights_project_before_registering_single_source(
     tmp_path: Path,
 ) -> None:
