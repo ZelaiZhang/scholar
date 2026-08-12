@@ -281,4 +281,12 @@ $env:PYTHONUTF8="1"
 git diff --check
 ```
 
+## v0.3 恢复与并发安全
+
+- 调用额度通过 `provider-budget lock` 原子占位，并对陈旧 manifest 做并发校验；网络失败和无效响应仍计入额度。
+- provider 产物使用 `create-only commit`：调用等待期间若研究者写入候选、评审或 meta-review，系统拒绝覆盖人工文件。
+- 外发前逐条校验证据账本的 claim/source_id；上下文变化时保留原 `context.md`，新快照写入 `context-<sha256前16位>.md`。
+- `approve-idea` 会原子完成 run；批准成功后直接运行 `guide`，下一步进入 `$experiment-advisor`，无需再补一次 `cycle`。
+- `doctor` 校验 run 状态、冻结产物哈希、三路评审、人工 selected Idea，以及 journal 中引用的 run 和产物是否真实存在。
+
 日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`，实施计划见 `docs/superpowers/plans/2026-08-12-research-os-co-researcher.md`。

@@ -71,6 +71,15 @@ def test_supervised_cycle_boundaries_and_deepseek_are_documented() -> None:
     assert "独立实验仓库" in readme
 
 
+def test_cycle_recovery_safety_is_documented() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "provider-budget lock" in readme
+    assert "create-only commit" in readme
+    assert "context-<sha256前16位>.md" in readme
+    assert "approve-idea` 会原子完成 run" in readme
+
+
 def test_provider_example_is_accepted_by_the_real_parser() -> None:
     config = load_provider_config(ROOT / "config/providers.example.yaml")
 
