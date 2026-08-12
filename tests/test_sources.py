@@ -242,3 +242,44 @@ def test_add_many_reports_added_duplicate_and_authorization_upgrade(
         result.authorizations_upgraded,
     ) == (1, 2, 1)
     assert len(registry.records()) == 2
+
+
+def test_reregistering_moved_local_file_refreshes_canonical_path(
+    tmp_path: Path,
+) -> None:
+    old_path = tmp_path / "old.pdf"
+    new_path = tmp_path / "new.pdf"
+    old_path.write_bytes(b"same public paper")
+    registry = SourceRegistry(tmp_path / "sources.jsonl")
+    original = registry.add(str(old_path), notes="人工笔记")
+    old_path.rename(new_path)
+
+    refreshed = registry.add(str(new_path))
+
+    assert refreshed.source_id == original.source_id
+    assert refreshed.canonical == new_path.resolve().as_posix()
+    assert refreshed.notes == "人工笔记"
+    assert refreshed.source_id in registry.verified_source_ids()
+
+
+def test_source_manifest_wraps_invalid_url_port_with_line_number(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text(
+        "doi:10.1000/good\nhttps://example.org:bad/paper\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InvalidSourceError) as captured:
+        load_source_manifest(manifest)
+
+    assert f"{manifest}:2:" in str(captured.value)
+
+
+def test_source_manifest_cannot_register_itself(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text("./sources.txt\n", encoding="utf-8")
+
+    with pytest.raises(InvalidSourceError, match="清单文件自身"):
+        load_source_manifest(manifest)

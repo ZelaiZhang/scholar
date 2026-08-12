@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import subprocess
 
 import pytest
 
@@ -9,6 +11,7 @@ from research_os.project import (
     create_project,
     link_project_sources,
     load_project_manifest,
+    resolve_project_path,
 )
 
 
@@ -62,6 +65,43 @@ def test_legacy_project_manifest_falls_back_to_brief_title(tmp_path: Path) -> No
     assert manifest.slug == "legacy"
     assert manifest.source_ids == ()
     assert manifest.persisted is False
+
+
+def test_broken_project_yaml_is_reported_as_a_project_format_error(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    (project / "project.yaml").write_text(
+        "schema_version: [broken", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="课题元数据 YAML 无法解析"):
+        load_project_manifest(project)
+
+
+def test_resolve_project_path_rejects_directory_link_outside_workspace(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = projects / "topic-a"
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            link.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"无法在当前环境创建目录链接: {exc}")
+
+    with pytest.raises(ValueError, match="课题路径越出工作区"):
+        resolve_project_path(tmp_path, "topic-a", require_exists=True)
 
 
 def test_create_project_refuses_to_overwrite(tmp_path: Path) -> None:

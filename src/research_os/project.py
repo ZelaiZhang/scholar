@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import resources
@@ -45,6 +46,52 @@ class ProjectManifest:
 def validate_slug(slug: str) -> None:
     if not SLUG_PATTERN.fullmatch(slug):
         raise InvalidSlugError("slug 只能包含小写字母、数字和单个连字符")
+
+
+def resolve_project_path(
+    workspace: Path, slug: str, *, require_exists: bool = False
+) -> Path:
+    """Resolve a direct project child without following links outside workspace."""
+    validate_slug(slug)
+    projects_root = resolve_workspace_directory(workspace, "projects")
+    candidate = projects_root / slug
+    if _is_link_or_reparse_point(candidate):
+        raise ValueError(f"课题路径越出工作区（目录不能是符号链接或目录联接）: {candidate}")
+    project_path = candidate.resolve()
+    if project_path.parent != projects_root:
+        raise ValueError(f"课题路径越出工作区: {project_path}")
+    if require_exists and not project_path.is_dir():
+        raise FileNotFoundError(f"课题不存在: {project_path}")
+    return project_path
+
+
+def resolve_workspace_directory(
+    workspace: Path, name: str, *, require_exists: bool = False
+) -> Path:
+    """Resolve one internal directory without following it outside workspace."""
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        raise ValueError(f"无效工作区目录名: {name}")
+    workspace_root = workspace.resolve()
+    candidate = workspace_root / name
+    if _is_link_or_reparse_point(candidate):
+        raise ValueError(f"{name} 不能是符号链接或目录联接: {candidate}")
+    directory = candidate.resolve()
+    if directory.parent != workspace_root:
+        raise ValueError(f"{name} 路径越出工作区: {directory}")
+    if require_exists and not directory.is_dir():
+        raise FileNotFoundError(f"工作区目录不存在: {directory}")
+    return directory
+
+
+def _is_link_or_reparse_point(path: Path) -> bool:
+    """Detect symlinks and Windows junctions without following the target."""
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(metadata, "st_file_attributes", 0)
+    return path.is_symlink() or bool(reparse_flag and file_attributes & reparse_flag)
 
 
 def template_content(name: str, template_root: Path | None) -> str:
@@ -96,7 +143,10 @@ def load_project_manifest(
             1, first_heading, project_path.name, "", (), persisted=False
         )
 
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"课题元数据 YAML 无法解析: {path}: {exc}") from exc
     if not isinstance(raw, dict) or raw.get("schema_version") != 1:
         raise ValueError(f"课题元数据格式无效: {path}")
     title = str(raw.get("title", "")).strip()
@@ -123,12 +173,9 @@ def load_project_manifest(
 
 
 def link_project_sources(workspace: Path, slug: str, source_ids: list[str]) -> None:
-    validate_slug(slug)
     if any(not item.startswith("src-") for item in source_ids):
         raise ValueError("source_id 必须以 src- 开头")
-    project_path = workspace.resolve() / "projects" / slug
-    if not project_path.is_dir():
-        raise FileNotFoundError(f"课题不存在: {project_path}")
+    project_path = resolve_project_path(workspace, slug, require_exists=True)
     manifest = load_project_manifest(project_path, allow_legacy=True)
     ordered = list(manifest.source_ids)
     for source_id in source_ids:
@@ -157,7 +204,7 @@ def create_project(
     if not title.strip():
         raise ValueError("课题标题不能为空")
 
-    destination = workspace.resolve() / "projects" / slug
+    destination = resolve_project_path(workspace, slug)
     if destination.exists():
         raise ProjectExistsError(f"课题已存在: {destination}")
 

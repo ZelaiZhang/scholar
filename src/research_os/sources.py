@@ -30,6 +30,31 @@ class SourceRecord:
     external_api_allowed: bool = False
     metadata_status: str = "unverified"
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.source_id, str) or not self.source_id.startswith(
+            "src-"
+        ):
+            raise ValueError("source_id 必须是以 src- 开头的字符串")
+        if self.kind not in {"file", "doi", "arxiv", "url"}:
+            raise ValueError(f"未知来源类型: {self.kind}")
+        if not isinstance(self.canonical, str) or not self.canonical.strip():
+            raise ValueError("canonical 必须是非空字符串")
+        if not isinstance(self.imported_at, str) or not self.imported_at.strip():
+            raise ValueError("imported_at 必须是非空字符串")
+        if self.content_hash is not None and (
+            not isinstance(self.content_hash, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", self.content_hash)
+        ):
+            raise ValueError("content_hash 必须是 64 位十六进制字符串或 null")
+        if self.kind == "file" and self.content_hash is None:
+            raise ValueError("本地文件来源必须包含 content_hash")
+        if not isinstance(self.notes, str):
+            raise ValueError("notes 必须是字符串")
+        if not isinstance(self.external_api_allowed, bool):
+            raise ValueError("external_api_allowed 必须是布尔值")
+        if not isinstance(self.metadata_status, str):
+            raise ValueError("metadata_status 必须是字符串")
+
 
 @dataclass(frozen=True)
 class BatchAddResult:
@@ -55,7 +80,11 @@ def _normalize_url(value: str) -> str:
     if parts.scheme.lower() not in {"http", "https"} or not parts.netloc:
         raise InvalidSourceError(f"无效 URL: {value}")
     hostname = (parts.hostname or "").lower()
-    port = f":{parts.port}" if parts.port else ""
+    try:
+        parsed_port = parts.port
+    except ValueError as exc:
+        raise InvalidSourceError(f"无效 URL 端口: {value}") from exc
+    port = f":{parsed_port}" if parsed_port else ""
     netloc = f"{hostname}{port}"
     return urlunsplit((parts.scheme.lower(), netloc, parts.path or "/", parts.query, ""))
 
@@ -104,6 +133,7 @@ def hash_file(path: Path) -> str:
 def load_source_manifest(path: Path) -> list[str]:
     if not path.is_file():
         raise FileNotFoundError(path)
+    manifest_path = path.resolve()
     values: list[str] = []
     for line_number, line in enumerate(
         path.read_text(encoding="utf-8").splitlines(), 1
@@ -112,11 +142,16 @@ def load_source_manifest(path: Path) -> list[str]:
         if not value or value.startswith("#"):
             continue
         candidate = Path(value).expanduser()
-        if not candidate.is_absolute() and not value.lower().startswith(
+        is_identifier = value.lower().startswith(
             ("doi:", "arxiv:", "http://", "https://")
-        ):
+        )
+        if not candidate.is_absolute() and not is_identifier:
             candidate = path.parent / candidate
             value = candidate.resolve().as_posix()
+        if not is_identifier and Path(value).expanduser().resolve() == manifest_path:
+            raise InvalidSourceError(
+                f"{path}:{line_number}: 来源清单不能登记清单文件自身"
+            )
         try:
             normalize_source(value)
         except InvalidSourceError as exc:
@@ -159,7 +194,7 @@ class SourceRegistry:
                 continue
             try:
                 records.append(SourceRecord(**json.loads(line)))
-            except (TypeError, json.JSONDecodeError) as exc:
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise ValueError(
                     f"来源登记表第 {line_number} 行损坏: {self.path}"
                 ) from exc
@@ -240,6 +275,14 @@ class SourceRegistry:
                 continue
             duplicates += 1
             existing = records[index]
+            if (
+                existing.kind == "file"
+                and candidate.kind == "file"
+                and existing.canonical != candidate.canonical
+            ):
+                existing = replace(existing, canonical=candidate.canonical)
+                records[index] = existing
+                changed = True
             if external_api_allowed and not existing.external_api_allowed:
                 existing = replace(existing, external_api_allowed=True)
                 records[index] = existing

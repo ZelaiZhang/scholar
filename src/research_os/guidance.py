@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from research_os.evidence import load_ledger, validate_ledger
-from research_os.project import load_project_manifest, template_content, validate_slug
+from research_os.project import (
+    load_project_manifest,
+    resolve_project_path,
+    resolve_workspace_directory,
+    template_content,
+)
 from research_os.sources import SourceRegistry
 
 
@@ -35,23 +40,39 @@ def _normalized(text: str) -> str:
     return text.replace("\r\n", "\n").strip()
 
 
-def _matches_template(
+def _document_progress(
     project_path: Path,
     filename: str,
     template_name: str,
     title: str,
-) -> bool:
+    completion_marker: str,
+) -> str:
     path = project_path / filename
     if not path.is_file():
-        return False
+        return "blocked"
+    actual = path.read_text(encoding="utf-8")
     expected = template_content(template_name, None).replace(
         "{{PROJECT_TITLE}}", title
     )
-    return _normalized(path.read_text(encoding="utf-8")) == _normalized(expected)
+    if _normalized(actual) == _normalized(expected):
+        return "unstarted"
+    marker = f"<!-- research-os:stage={completion_marker} -->"
+    return "complete" if marker in actual else "in_progress"
 
 
-def _linked_paper_card_count(workspace: Path, source_ids: tuple[str, ...]) -> int:
-    papers_root = workspace / "library" / "papers"
+def _progress_status(progress: str) -> str:
+    return {
+        "blocked": "受阻",
+        "unstarted": "未开始",
+        "in_progress": "进行中",
+        "complete": "已产出",
+    }[progress]
+
+
+def _linked_paper_card_count(
+    library_root: Path, source_ids: tuple[str, ...]
+) -> int:
+    papers_root = library_root / "papers"
     if not source_ids or not papers_root.is_dir():
         return 0
     count = 0
@@ -96,18 +117,17 @@ def _blocked_action(slug: str, reason: str) -> NextAction:
 
 
 def guide_project(workspace: Path, slug: str) -> GuideReport:
-    validate_slug(slug)
     workspace = workspace.resolve()
-    project_path = workspace / "projects" / slug
-    if not project_path.is_dir():
-        raise FileNotFoundError(f"课题不存在: {project_path}")
+    project_path = resolve_project_path(workspace, slug, require_exists=True)
     manifest = load_project_manifest(project_path, allow_legacy=True)
-    registry = SourceRegistry(workspace / "library" / "sources.jsonl")
-    known_source_ids = registry.verified_source_ids()
+    library_root = resolve_workspace_directory(workspace, "library")
+    registry = SourceRegistry(library_root / "sources.jsonl")
+    globally_verified_source_ids = registry.verified_source_ids()
+    known_source_ids = set(manifest.source_ids) & globally_verified_source_ids
     unknown_linked = [
         source_id
         for source_id in manifest.source_ids
-        if source_id not in known_source_ids
+        if source_id not in globally_verified_source_ids
     ]
 
     ledger_error = ""
@@ -121,37 +141,57 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
     except (OSError, ValueError) as exc:
         ledger_error = str(exc)
 
-    brief_ready = not _matches_template(
-        project_path, "00-research-brief.md", "research-brief.md", manifest.title
+    brief_progress = _document_progress(
+        project_path,
+        "00-research-brief.md",
+        "research-brief.md",
+        manifest.title,
+        "brief-complete",
     )
+    brief_ready = brief_progress == "complete"
     paper_card_count = _linked_paper_card_count(
-        workspace, manifest.source_ids
+        library_root, manifest.source_ids
     )
     raw_claims = ledger.get("claims", [])
     claim_count = len(raw_claims) if isinstance(raw_claims, list) else 0
-    literature_ready = not _matches_template(
+    literature_progress = _document_progress(
         project_path,
         "03-literature-review.md",
         "literature-review.md",
         manifest.title,
+        "synthesis-complete",
     )
-    idea_ready = not _matches_template(
-        project_path, "04-idea-candidates.md", "idea-candidates.md", manifest.title
+    literature_ready = literature_progress == "complete"
+    idea_progress = _document_progress(
+        project_path,
+        "04-idea-candidates.md",
+        "idea-candidates.md",
+        manifest.title,
+        "idea-complete",
     )
-    design_ready = not _matches_template(
+    idea_ready = idea_progress == "complete"
+    design_progress = _document_progress(
         project_path,
         "05-experiment-design.md",
         "experiment-design.md",
         manifest.title,
+        "design-complete",
     )
-    result_ready = not _matches_template(
-        project_path, "06-result-analysis.md", "result-analysis.md", manifest.title
+    design_ready = design_progress == "complete"
+    result_progress = _document_progress(
+        project_path,
+        "06-result-analysis.md",
+        "result-analysis.md",
+        manifest.title,
+        "result-complete",
     )
+    result_ready = result_progress == "complete"
     result_inputs = _result_inputs(project_path)
     manuscripts = _markdown_outputs(project_path / "writing")
     reviews = _markdown_outputs(project_path / "reviews")
 
-    evidence_blocked = bool(ledger_error or ledger_issues or unknown_linked)
+    ledger_blocked = bool(ledger_error or ledger_issues)
+    evidence_blocked = bool(ledger_blocked or unknown_linked)
     if ledger_error:
         evidence_detail = f"账本无法读取：{ledger_error}"
     elif unknown_linked:
@@ -160,7 +200,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         evidence_detail = f"证据账本有 {len(ledger_issues)} 项校验问题"
     elif claim_count and literature_ready:
         evidence_detail = f"{claim_count} 条 claim，文献综合已编辑"
-    elif claim_count or literature_ready:
+    elif claim_count or literature_progress == "in_progress":
         evidence_detail = "证据账本与文献综合尚未同时完成"
     else:
         evidence_detail = "尚未形成证据 claim 和文献综合"
@@ -169,7 +209,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         synthesis_status = "受阻"
     elif claim_count and literature_ready:
         synthesis_status = "已产出"
-    elif claim_count or literature_ready:
+    elif claim_count or literature_progress == "in_progress":
         synthesis_status = "进行中"
     else:
         synthesis_status = "未开始"
@@ -197,8 +237,13 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
     stages = (
         StageView(
             "课题定义",
-            "已产出" if brief_ready else "未开始",
-            "研究简报已编辑" if brief_ready else "仍是空白模板",
+            _progress_status(brief_progress),
+            {
+                "blocked": "研究简报缺失",
+                "unstarted": "仍是空白模板",
+                "in_progress": "已编辑，尚未通过质量门禁",
+                "complete": "研究简报已通过质量门禁",
+            }[brief_progress],
         ),
         StageView("资料导入", intake_status, intake_detail),
         StageView(
@@ -209,13 +254,23 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         StageView("文献综合", synthesis_status, evidence_detail),
         StageView(
             "Idea 审查",
-            "已产出" if idea_ready else "未开始",
-            "候选与反向审查已编辑" if idea_ready else "仍是空白模板",
+            _progress_status(idea_progress),
+            {
+                "blocked": "Idea 文件缺失",
+                "unstarted": "仍是空白模板",
+                "in_progress": "已编辑，尚未通过反向审查门禁",
+                "complete": "候选 Idea 已通过反向审查门禁",
+            }[idea_progress],
         ),
         StageView(
             "实验设计",
-            "已产出" if design_ready else "未开始",
-            "设计文档已编辑" if design_ready else "仍是空白模板",
+            _progress_status(design_progress),
+            {
+                "blocked": "实验设计文件缺失",
+                "unstarted": "仍是空白模板",
+                "in_progress": "已编辑，尚未通过设计门禁",
+                "complete": "实验设计已通过质量门禁",
+            }[design_progress],
         ),
         StageView("结果解读", result_status, result_detail),
         StageView(
@@ -230,11 +285,27 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         ),
     )
 
-    if evidence_blocked:
+    if unknown_linked:
+        invalid_ids = ", ".join(unknown_linked)
+        next_action = NextAction(
+            reason="课题关联了未登记、已移动或内容已改变的来源；校验证据账本不能修复来源关联。",
+            target="project.yaml / library/sources.jsonl",
+            command=(
+                f"$paper-intake 修复 {slug} 的无效来源关联 {invalid_ids}："
+                "重新登记当前公开文件；若属于误关联，经人工确认后从 project.yaml 移除"
+            ),
+            skill="paper-intake",
+        )
+    elif ledger_blocked:
         next_action = _blocked_action(slug, evidence_detail)
     elif not brief_ready:
+        progress_hint = (
+            "研究简报仍是空白模板"
+            if brief_progress == "unstarted"
+            else "研究简报已编辑但尚未通过质量门禁"
+        )
         next_action = NextAction(
-            reason="研究简报仍是空白模板，先把模糊方向变成可证伪问题。",
+            reason=f"{progress_hint}，先把方向变成可证伪问题并完成人工确认。",
             target="00-research-brief.md",
             command=(
                 f"$research-project-init 完善 projects/{slug}/"

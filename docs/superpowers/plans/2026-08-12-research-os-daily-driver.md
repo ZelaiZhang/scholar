@@ -847,7 +847,7 @@ $taskSmokeWorkspace = Join-Path $taskSmokeRoot "workspace"
 $taskSmokeSite = Join-Path $taskSmokeRoot "site"
 New-Item -ItemType Directory -Path $taskSmokeWorkspace -Force | Out-Null
 Copy-Item -LiteralPath config, inbox, library, projects, .agents -Destination $taskSmokeWorkspace -Recurse
-.\.venv\Scripts\python.exe -m pip wheel . --no-deps --wheel-dir (Join-Path $taskSmokeRoot "dist")
+python -m pip wheel . --no-deps --no-build-isolation --wheel-dir (Join-Path $taskSmokeRoot "dist")
 $taskWheel = Get-ChildItem -LiteralPath (Join-Path $taskSmokeRoot "dist") -Filter *.whl | Select-Object -First 1
 .\.venv\Scripts\python.exe -m pip install --target $taskSmokeSite $taskWheel.FullName
 $env:PYTHONPATH = $taskSmokeSite

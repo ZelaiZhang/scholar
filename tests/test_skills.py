@@ -59,3 +59,20 @@ def test_execution_and_writing_skills_have_specific_hard_gates() -> None:
 
     assert "不得运行训练" in experiment
     assert "未核验事实" in manuscript
+
+
+def test_stage_skills_write_completion_markers_only_after_quality_gates() -> None:
+    expected = {
+        "research-project-init": "brief-complete",
+        "literature-synthesis": "synthesis-complete",
+        "idea-review": "idea-complete",
+        "experiment-advisor": "design-complete",
+        "result-interpreter": "result-complete",
+    }
+    for skill_name, marker in expected.items():
+        text = (
+            ROOT / ".agents" / "skills" / skill_name / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        assert f"research-os:stage={marker}" in text
+        assert "质量门禁" in text

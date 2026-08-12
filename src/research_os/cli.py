@@ -15,7 +15,8 @@ from research_os.project import (
     create_project,
     link_project_sources,
     load_project_manifest,
-    validate_slug,
+    resolve_project_path,
+    resolve_workspace_directory,
 )
 from research_os.provider import OpenAICompatibleProvider
 from research_os.sources import (
@@ -117,15 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
 def _preflight_project(workspace: Path, slug: str | None) -> None:
     if slug is None:
         return
-    validate_slug(slug)
-    path = workspace.resolve() / "projects" / slug
-    if not path.is_dir():
-        raise FileNotFoundError(f"课题不存在: {path}")
+    path = resolve_project_path(workspace, slug, require_exists=True)
     load_project_manifest(path, allow_legacy=True)
 
 
 def _project_slugs(workspace: Path) -> list[str]:
-    root = workspace.resolve() / "projects"
+    root = resolve_workspace_directory(workspace, "projects")
     if not root.is_dir():
         return []
     return sorted(path.name for path in root.iterdir() if path.is_dir())
@@ -156,6 +154,10 @@ def _restore_file(path: Path, snapshot: bytes | None) -> None:
         atomic_write_bytes(path, snapshot)
 
 
+def _registry_path(workspace: Path) -> Path:
+    return resolve_workspace_directory(workspace, "library") / "sources.jsonl"
+
+
 def _link_sources_transactionally(
     workspace: Path,
     slug: str | None,
@@ -165,7 +167,9 @@ def _link_sources_transactionally(
 ) -> None:
     if slug is None:
         return
-    project_manifest = workspace / "projects" / slug / "project.yaml"
+    project_manifest = resolve_project_path(
+        workspace, slug, require_exists=True
+    ) / "project.yaml"
     project_snapshot = _snapshot_file(project_manifest)
     try:
         link_project_sources(workspace, slug, source_ids)
@@ -217,7 +221,7 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "add-source":
         workspace = args.workspace.resolve()
         _preflight_project(workspace, args.project)
-        registry = SourceRegistry(workspace / "library" / "sources.jsonl")
+        registry = SourceRegistry(_registry_path(workspace))
         registry_snapshot = _snapshot_file(registry.path)
         record = registry.add(
             args.source,
@@ -238,7 +242,7 @@ def _run(args: argparse.Namespace) -> int:
         workspace = args.workspace.resolve()
         _preflight_project(workspace, args.project)
         values = load_source_manifest(args.manifest.resolve())
-        registry = SourceRegistry(workspace / "library" / "sources.jsonl")
+        registry = SourceRegistry(_registry_path(workspace))
         registry_snapshot = _snapshot_file(registry.path)
         result = registry.add_many(
             values,
@@ -280,7 +284,7 @@ def _run(args: argparse.Namespace) -> int:
                 f"provenance 输出已存在，不自动覆盖: {provenance_path}"
             )
         system_text, user_text = load_authorized_external_texts(
-            args.workspace.resolve() / "library" / "sources.jsonl",
+            _registry_path(args.workspace.resolve()),
             [args.system, args.user],
             args.source_id,
         )
@@ -306,7 +310,7 @@ def _run(args: argparse.Namespace) -> int:
         return 0
     if args.command == "validate-ledger":
         registry = SourceRegistry(
-            args.workspace.resolve() / "library" / "sources.jsonl"
+            _registry_path(args.workspace.resolve())
         )
         known_source_ids = registry.verified_source_ids()
         issues = validate_ledger(

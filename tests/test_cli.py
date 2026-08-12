@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import subprocess
 
 import pytest
 
@@ -356,6 +358,32 @@ def test_cli_guide_requires_explicit_project_when_multiple_exist(
     assert "--project" in error
 
 
+def test_cli_guide_turns_broken_project_yaml_into_concise_error(
+    tmp_path: Path, capsys
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    (project / "project.yaml").write_text(
+        "schema_version: [broken", encoding="utf-8"
+    )
+
+    assert (
+        main(
+            [
+                "guide",
+                "--workspace",
+                str(tmp_path),
+                "--project",
+                "topic-a",
+            ]
+        )
+        == 2
+    )
+
+    captured = capsys.readouterr()
+    assert "YAML 无法解析" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_cli_batch_import_links_sources_to_project(tmp_path: Path) -> None:
     create_project(tmp_path, "A", "topic-a")
     manifest = tmp_path / "sources.txt"
@@ -467,6 +495,38 @@ def test_cli_preflights_project_before_registering_single_source(
 
     assert exit_code == 2
     assert not (tmp_path / "library" / "sources.jsonl").exists()
+
+
+def test_cli_rejects_library_directory_link_outside_workspace(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside-library"
+    outside.mkdir()
+    library = tmp_path / "library"
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(library), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            library.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"无法在当前环境创建目录链接: {exc}")
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/must-stay-inside",
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (outside / "sources.jsonl").exists()
 
 
 def test_cli_doctor_uses_report_exit_code(tmp_path: Path, capsys) -> None:

@@ -18,6 +18,7 @@ description: 综合多篇论文的共识、冲突、方法差异和研究空白�
 4. 将事实写为带来源定位的 claim，将综合判断标为 inference，将待验证方向标为 hypothesis。
 5. 更新 `literature-matrix.csv`、`02-evidence-ledger.yaml` 和 `03-literature-review.md`。
 6. 运行 `python -m research_os validate-ledger`，把失败项留给人工核验。
+7. 只有校验退出码为 0 且下列质量门禁全部通过后，才在综述末尾写入 `<!-- research-os:stage=synthesis-complete -->`；否则移除该标记并保持“进行中”。
 
 ## 质量门禁
 
@@ -25,4 +26,3 @@ description: 综合多篇论文的共识、冲突、方法差异和研究空白�
 - 同时报告支持与反对证据，不以论文数量代替证据质量。
 - 研究空白必须说明检索范围和反例风险，不直接宣称创新成立。
 - 保留人工结论；只更新明确的生成区块。
-
