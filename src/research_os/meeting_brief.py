@@ -13,7 +13,7 @@ from research_os.dashboard import (
 )
 from research_os.cycle import (
     cycle_snapshot_token,
-    load_active_cycle,
+    load_active_cycle_snapshot,
     validate_cycle_artifacts,
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
@@ -415,7 +415,7 @@ def _active_ideas(
     if not expected.run_id:
         return ()
     assert_directory_identity(project, project_identity, context="project")
-    run_dir, manifest = load_active_cycle(
+    run_dir, manifest, artifact_identity = load_active_cycle_snapshot(
         workspace,
         slug,
         expected_project_identity=project_identity,
@@ -424,6 +424,10 @@ def _active_ideas(
         raise ValueError(
             "active cycle changed while building meeting brief: "
             f"expected {expected.run_id}, found {manifest.run_id}"
+        )
+    if artifact_identity != expected.artifact_identity:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
         )
     ideas_path = project / "ideas"
     if ideas_path.resolve().parent != project:
@@ -446,6 +450,7 @@ def _active_ideas(
         manifest,
         source_ids=source_ids,
         archive_path=archive_path,
+        expected_identity=expected.artifact_identity,
     )
     if artifact_issues:
         raise ValueError(

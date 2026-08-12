@@ -5,8 +5,9 @@ from datetime import date
 from pathlib import Path
 
 from research_os.cycle import (
+    CycleArtifactIdentity,
     cycle_snapshot_token,
-    load_active_cycle,
+    load_active_cycle_snapshot,
     validate_cycle_artifacts,
 )
 from research_os.dashboard_risks import (
@@ -56,6 +57,7 @@ class IdeaStatus:
     run_id: str
     cycle_state: str
     snapshot_token: str
+    artifact_identity: CycleArtifactIdentity | None
     candidate_count: int
     selected_idea_ids: tuple[str, ...]
     human_decision_required: bool
@@ -241,6 +243,7 @@ def _idea_status(
             run_id="",
             cycle_state="not_started",
             snapshot_token="",
+            artifact_identity=None,
             candidate_count=0,
             selected_idea_ids=(),
             human_decision_required=False,
@@ -251,7 +254,7 @@ def _idea_status(
             independent_review_complete=False,
             meta_review_complete=False,
         )
-    run_dir, manifest = load_active_cycle(
+    run_dir, manifest, artifact_identity = load_active_cycle_snapshot(
         workspace,
         slug,
         expected_project_identity=expected_project_identity,
@@ -289,6 +292,7 @@ def _idea_status(
         manifest,
         source_ids=allowed_source_ids,
         archive_path=archive_path,
+        expected_identity=artifact_identity,
     )
     if artifact_issues:
         raise ValueError(
@@ -318,6 +322,7 @@ def _idea_status(
         run_id=manifest.run_id,
         cycle_state=manifest.state,
         snapshot_token=cycle_snapshot_token(manifest, archive),
+        artifact_identity=artifact_identity,
         candidate_count=len(active_ideas),
         selected_idea_ids=selected,
         human_decision_required=manifest.state == "awaiting_human_decision",

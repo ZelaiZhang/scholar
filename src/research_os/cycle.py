@@ -94,6 +94,15 @@ class CycleAction:
     manifest: CycleManifest
 
 
+@dataclass(frozen=True)
+class CycleArtifactIdentity:
+    run: tuple[int, int]
+    candidates: tuple[int, int] | None
+    reviews: tuple[int, int] | None
+    review_files: tuple[tuple[str, tuple[int, int]], ...]
+    meta_review: tuple[int, int] | None
+
+
 def cycle_snapshot_token(
     manifest: CycleManifest,
     archive: IdeaArchive,
@@ -172,6 +181,39 @@ def _direct_file(parent: Path, name: str) -> Path:
     if not resolved.is_file():
         raise ValueError(f"expected an internal file: {resolved}")
     return resolved
+
+
+def _direct_file_identity(
+    parent: Path,
+    name: str,
+    *,
+    expected_parent_identity: tuple[int, int],
+) -> tuple[Path, tuple[int, int]]:
+    _assert_directory_identity(parent, expected_parent_identity, context=parent.name)
+    path = _direct_file(parent, name)
+    if _is_link_or_reparse_point(path):
+        raise ValueError(f"internal file cannot be a link or reparse point: {path}")
+    metadata = path.lstat()
+    identity = (metadata.st_dev, metadata.st_ino)
+    _assert_directory_identity(parent, expected_parent_identity, context=parent.name)
+    return path, identity
+
+
+def _assert_direct_file_identity(
+    parent: Path,
+    name: str,
+    expected: tuple[int, int],
+    *,
+    expected_parent_identity: tuple[int, int],
+) -> Path:
+    path, current = _direct_file_identity(
+        parent,
+        name,
+        expected_parent_identity=expected_parent_identity,
+    )
+    if current != expected:
+        raise OSError(f"{name} was replaced or changed: {path}")
+    return path
 
 
 def _sha256_file(path: Path) -> str:
@@ -864,11 +906,11 @@ def _create_run(
     return run_dir, manifest
 
 
-def _active_run(
+def _active_run_with_identity(
     project: Path,
     *,
     expected_project_identity: tuple[int, int] | None = None,
-) -> tuple[Path, CycleManifest]:
+) -> tuple[Path, CycleManifest, tuple[int, int]]:
     project_identity = expected_project_identity or _directory_identity(project)
     _assert_directory_identity(project, project_identity, context="project")
     cycles = _direct_directory(project, "cycles", create=False)
@@ -897,7 +939,72 @@ def _active_run(
         raise ValueError("active cycle belongs to a different project")
     _assert_directory_identity(cycles, cycles_identity, context="cycles")
     _assert_directory_identity(project, project_identity, context="project")
+    _assert_directory_identity(run_dir, run_identity, context="run")
+    return run_dir, manifest, run_identity
+
+
+def _active_run(
+    project: Path,
+    *,
+    expected_project_identity: tuple[int, int] | None = None,
+) -> tuple[Path, CycleManifest]:
+    run_dir, manifest, _run_identity = _active_run_with_identity(
+        project,
+        expected_project_identity=expected_project_identity,
+    )
     return run_dir, manifest
+
+
+def capture_cycle_artifact_identity(
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    expected_run_identity: tuple[int, int] | None = None,
+) -> CycleArtifactIdentity:
+    if _is_link_or_reparse_point(run_dir):
+        raise ValueError(f"run directory cannot be a link or reparse point: {run_dir}")
+    run_identity = expected_run_identity or _directory_identity(run_dir)
+    _assert_directory_identity(run_dir, run_identity, context="run")
+
+    candidates_identity: tuple[int, int] | None = None
+    if manifest.candidate_sha256:
+        _candidate_path, candidates_identity = _direct_file_identity(
+            run_dir,
+            "candidates.yaml",
+            expected_parent_identity=run_identity,
+        )
+
+    reviews_identity: tuple[int, int] | None = None
+    review_files: list[tuple[str, tuple[int, int]]] = []
+    if manifest.reviews_sha256:
+        reviews_dir = _direct_directory(run_dir, "reviews", create=False)
+        reviews_identity = _directory_identity(reviews_dir)
+        _assert_directory_identity(run_dir, run_identity, context="run")
+        for role in ("novelty", "methods", "medical-safety"):
+            _review_path, review_identity = _direct_file_identity(
+                reviews_dir,
+                f"{role}.json",
+                expected_parent_identity=reviews_identity,
+            )
+            review_files.append((role, review_identity))
+        _assert_directory_identity(reviews_dir, reviews_identity, context="reviews")
+
+    meta_review_identity: tuple[int, int] | None = None
+    if manifest.meta_review_sha256:
+        _meta_path, meta_review_identity = _direct_file_identity(
+            run_dir,
+            "meta-review.json",
+            expected_parent_identity=run_identity,
+        )
+
+    _assert_directory_identity(run_dir, run_identity, context="run")
+    return CycleArtifactIdentity(
+        run=run_identity,
+        candidates=candidates_identity,
+        reviews=reviews_identity,
+        review_files=tuple(review_files),
+        meta_review=meta_review_identity,
+    )
 
 
 def load_active_cycle(
@@ -911,6 +1018,25 @@ def load_active_cycle(
         project,
         expected_project_identity=expected_project_identity,
     )
+
+
+def load_active_cycle_snapshot(
+    workspace: Path,
+    slug: str,
+    *,
+    expected_project_identity: tuple[int, int] | None = None,
+) -> tuple[Path, CycleManifest, CycleArtifactIdentity]:
+    project = resolve_project_path(workspace, slug, require_exists=True)
+    run_dir, manifest, run_identity = _active_run_with_identity(
+        project,
+        expected_project_identity=expected_project_identity,
+    )
+    identity = capture_cycle_artifact_identity(
+        run_dir,
+        manifest,
+        expected_run_identity=run_identity,
+    )
+    return run_dir, manifest, identity
 
 
 def approve_active_cycle_idea(
@@ -1189,6 +1315,7 @@ def validate_cycle_artifacts(
     *,
     source_ids: set[str],
     archive_path: Path,
+    expected_identity: CycleArtifactIdentity | None = None,
 ) -> tuple[str, ...]:
     """Validate state-bound cycle artifacts without changing the run."""
     issues: list[str] = []
@@ -1196,13 +1323,28 @@ def validate_cycle_artifacts(
     try:
         if _is_link_or_reparse_point(run_dir):
             raise ValueError(f"run directory cannot be a link or reparse point: {run_dir}")
-        run_identity = _directory_identity(run_dir)
+        run_identity = (
+            expected_identity.run
+            if expected_identity is not None
+            else _directory_identity(run_dir)
+        )
+        _assert_directory_identity(run_dir, run_identity, context="run")
     except (OSError, ValueError) as exc:
         return (f"run: {exc}",)
     if manifest.candidate_sha256:
         try:
             _assert_directory_identity(run_dir, run_identity, context="run")
-            candidates_path = _direct_file(run_dir, "candidates.yaml")
+            if expected_identity is not None:
+                if expected_identity.candidates is None:
+                    raise ValueError("candidate identity is missing from cycle snapshot")
+                candidates_path = _assert_direct_file_identity(
+                    run_dir,
+                    "candidates.yaml",
+                    expected_identity.candidates,
+                    expected_parent_identity=run_identity,
+                )
+            else:
+                candidates_path = _direct_file(run_dir, "candidates.yaml")
             if _sha256_direct_text(
                 candidates_path,
                 parent=run_dir,
@@ -1216,6 +1358,13 @@ def validate_cycle_artifacts(
                 expected_parent=run_dir,
                 expected_parent_identity=run_identity,
             )
+            if expected_identity is not None:
+                _assert_direct_file_identity(
+                    run_dir,
+                    "candidates.yaml",
+                    expected_identity.candidates,
+                    expected_parent_identity=run_identity,
+                )
             _assert_directory_identity(run_dir, run_identity, context="run")
             if manifest.state in {
                 "independent_review",
@@ -1234,7 +1383,31 @@ def validate_cycle_artifacts(
         try:
             _assert_directory_identity(run_dir, run_identity, context="run")
             reviews_dir = _direct_directory(run_dir, "reviews", create=False)
-            reviews_identity = _directory_identity(reviews_dir)
+            reviews_identity = (
+                expected_identity.reviews
+                if expected_identity is not None
+                else _directory_identity(reviews_dir)
+            )
+            if reviews_identity is None:
+                raise ValueError("review directory identity is missing from cycle snapshot")
+            _assert_directory_identity(reviews_dir, reviews_identity, context="reviews")
+            expected_review_files = (
+                dict(expected_identity.review_files)
+                if expected_identity is not None
+                else {}
+            )
+            if expected_identity is not None:
+                for role in ("novelty", "methods", "medical-safety"):
+                    if role not in expected_review_files:
+                        raise ValueError(
+                            f"{role} review identity is missing from cycle snapshot"
+                        )
+                    _assert_direct_file_identity(
+                        reviews_dir,
+                        f"{role}.json",
+                        expected_review_files[role],
+                        expected_parent_identity=reviews_identity,
+                    )
             if _reviews_digest(
                 reviews_dir,
                 expected_identity=reviews_identity,
@@ -1247,6 +1420,14 @@ def validate_cycle_artifacts(
                     expected_run_id=manifest.run_id,
                     expected_parent_identity=reviews_identity,
                 )
+            if expected_identity is not None:
+                for role in ("novelty", "methods", "medical-safety"):
+                    _assert_direct_file_identity(
+                        reviews_dir,
+                        f"{role}.json",
+                        expected_review_files[role],
+                        expected_parent_identity=reviews_identity,
+                    )
             _assert_directory_identity(reviews_dir, reviews_identity, context="reviews")
             _assert_directory_identity(run_dir, run_identity, context="run")
         except (OSError, UnicodeError, ValueError) as exc:
@@ -1254,7 +1435,17 @@ def validate_cycle_artifacts(
     if manifest.meta_review_sha256:
         try:
             _assert_directory_identity(run_dir, run_identity, context="run")
-            meta_path = _direct_file(run_dir, "meta-review.json")
+            if expected_identity is not None:
+                if expected_identity.meta_review is None:
+                    raise ValueError("meta-review identity is missing from cycle snapshot")
+                meta_path = _assert_direct_file_identity(
+                    run_dir,
+                    "meta-review.json",
+                    expected_identity.meta_review,
+                    expected_parent_identity=run_identity,
+                )
+            else:
+                meta_path = _direct_file(run_dir, "meta-review.json")
             if _sha256_direct_text(
                 meta_path,
                 parent=run_dir,
@@ -1267,6 +1458,13 @@ def validate_cycle_artifacts(
                     expected_idea_ids=candidate_ids,
                     expected_run_id=manifest.run_id,
                     expected_parent=run_dir,
+                    expected_parent_identity=run_identity,
+                )
+            if expected_identity is not None:
+                _assert_direct_file_identity(
+                    run_dir,
+                    "meta-review.json",
+                    expected_identity.meta_review,
                     expected_parent_identity=run_identity,
                 )
             _assert_directory_identity(run_dir, run_identity, context="run")
