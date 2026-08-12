@@ -13,6 +13,11 @@ from research_os.project import (
 from research_os.sources import SourceRegistry
 from research_os.cycle import CycleManifest, load_active_cycle
 from research_os.ideas import load_idea_archive
+from research_os.knowledge_recommend import (
+    KnowledgeRecommendation,
+    recommend_for_project,
+)
+from research_os.project import _is_link_or_reparse_point
 
 
 @dataclass(frozen=True)
@@ -36,6 +41,8 @@ class GuideReport:
     slug: str
     stages: tuple[StageView, ...]
     next_action: NextAction
+    method_references: tuple[KnowledgeRecommendation, ...] = ()
+    knowledge_issue: str = ""
 
 
 def _normalized(text: str) -> str:
@@ -116,6 +123,36 @@ def _blocked_action(slug: str, reason: str) -> NextAction:
         command=f'research-os validate-ledger "{ledger}" --workspace .',
         skill=None,
     )
+
+
+def _knowledge_stage(next_action: NextAction) -> str:
+    skill_to_stage = {
+        "research-project-init": "problem-definition",
+        "paper-intake": "literature-search",
+        "paper-deep-read": "literature-search",
+        "literature-synthesis": "evidence-synthesis",
+        "research-cycle": "idea-review",
+        "idea-review": "idea-review",
+        "experiment-advisor": "experiment-design",
+        "result-interpreter": "result-interpretation",
+        "manuscript-assistant": "writing",
+        "mock-reviewer": "review",
+        "research-weekly-review": "review",
+    }
+    if next_action.skill in skill_to_stage:
+        return skill_to_stage[next_action.skill]
+    target = next_action.target.casefold()
+    if "idea" in target or "cycles" in target:
+        return "idea-review"
+    if "experiment" in target or "artifacts" in target:
+        return "experiment-design"
+    if "result" in target:
+        return "result-interpretation"
+    if "writing" in target:
+        return "writing"
+    if "review" in target:
+        return "review"
+    return "problem-definition"
 
 
 def guide_project(workspace: Path, slug: str) -> GuideReport:
@@ -462,7 +499,28 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
             command=f"$research-weekly-review 复盘 {slug} 并只给三个下周行动",
             skill="research-weekly-review",
         )
-    return GuideReport(manifest.title, manifest.slug, stages, next_action)
+    method_references: tuple[KnowledgeRecommendation, ...] = ()
+    knowledge_issue = ""
+    knowledge_root = library_root / "knowledge"
+    if knowledge_root.exists() or _is_link_or_reparse_point(knowledge_root):
+        try:
+            method_references = recommend_for_project(
+                workspace,
+                slug,
+                stage=_knowledge_stage(next_action),
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            knowledge_issue = (
+                f"方法学知识库受阻：{exc}。运行 research-os kb doctor --workspace ."
+            )
+    return GuideReport(
+        manifest.title,
+        manifest.slug,
+        stages,
+        next_action,
+        method_references,
+        knowledge_issue,
+    )
 
 
 def render_guide(report: GuideReport) -> str:
@@ -476,6 +534,29 @@ def render_guide(report: GuideReport) -> str:
         f"| {stage.name} | {stage.status} | {stage.detail} |"
         for stage in report.stages
     )
+    lines.extend(
+        [
+            "",
+            "## 方法学参考",
+            "",
+            (
+                report.knowledge_issue
+                if report.knowledge_issue
+                else "全局知识条目只是方法学线索，不会自动成为当前课题引用证据。"
+            ),
+            "",
+        ]
+        if report.method_references or report.knowledge_issue
+        else []
+    )
+    for reference in report.method_references:
+        identity = f"（`{reference.source_id}`）" if reference.source_id else ""
+        lines.extend(
+            [
+                f"- **{reference.title}**{identity}：{reference.reason}",
+                f"  核验范围：{reference.verification_scope}；边界：{reference.cannot_use_for}",
+            ]
+        )
     lines.extend(
         [
             "",

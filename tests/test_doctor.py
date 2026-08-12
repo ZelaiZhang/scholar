@@ -37,6 +37,35 @@ def test_doctor_reports_healthy_workspace(tmp_path: Path) -> None:
     assert not [item for item in report.items if item.level == "fail"]
 
 
+def test_doctor_treats_absent_knowledge_base_as_legacy_compatible(
+    tmp_path: Path,
+) -> None:
+    make_healthy_workspace(tmp_path)
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    knowledge = next(item for item in report.items if item.name == "knowledge")
+    assert knowledge.level == "warn"
+    assert report.exit_code == 0
+
+
+def test_doctor_fails_when_present_knowledge_base_is_corrupt(tmp_path: Path) -> None:
+    make_healthy_workspace(tmp_path)
+    root = tmp_path / "library" / "knowledge"
+    root.mkdir()
+    (root / "catalog.yaml").write_text("entries: [", encoding="utf-8")
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    knowledge = next(item for item in report.items if item.name == "knowledge")
+    assert knowledge.level == "fail"
+    assert report.exit_code == 1
+
+
 def test_doctor_fails_for_missing_workspace_structure(tmp_path: Path) -> None:
     report = run_doctor(
         tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)

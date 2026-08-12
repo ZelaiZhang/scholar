@@ -18,6 +18,7 @@ from research_os.cycle import (
 )
 from research_os.ideas import load_idea_archive
 from research_os.journal import validate_journal
+from research_os.knowledge import inspect_knowledge_base
 
 
 EXPECTED_SKILLS = (
@@ -292,6 +293,56 @@ def run_doctor(
             )
 
     items.append(_check_projects(workspace, verified_ids))
+
+    knowledge_root = workspace / "library" / "knowledge"
+    if not knowledge_root.exists() and not _is_link_or_reparse_point(knowledge_root):
+        items.append(
+            DiagnosticItem(
+                "warn",
+                "knowledge",
+                "尚未安装科研方法知识库；旧工作区仍可正常使用",
+                "升级到 v0.4 知识资产后运行 research-os kb doctor",
+            )
+        )
+    else:
+        knowledge_report = inspect_knowledge_base(workspace)
+        failures = [
+            issue.message
+            for issue in knowledge_report.issues
+            if issue.level == "FAIL"
+        ]
+        warnings = [
+            issue.message
+            for issue in knowledge_report.issues
+            if issue.level == "WARN"
+        ]
+        if failures:
+            items.append(
+                DiagnosticItem(
+                    "fail",
+                    "knowledge",
+                    "；".join(failures),
+                    "运行 research-os kb doctor 并修复目录、来源或知识卡",
+                )
+            )
+        elif warnings:
+            items.append(
+                DiagnosticItem(
+                    "warn",
+                    "knowledge",
+                    "；".join(warnings),
+                    "复核陈旧条目后更新 reviewed_at 和核验范围",
+                )
+            )
+        else:
+            items.append(
+                DiagnosticItem(
+                    "pass",
+                    "knowledge",
+                    f"{knowledge_report.entry_count} 条目录、"
+                    f"{knowledge_report.card_count} 张知识卡可读",
+                )
+            )
 
     normalized_encoding = (stdout_encoding or "").lower().replace("-", "")
     if normalized_encoding == "utf8":

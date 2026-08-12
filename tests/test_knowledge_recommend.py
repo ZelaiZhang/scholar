@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from research_os.guidance import guide_project, render_guide
 from research_os.knowledge_recommend import recommend_for_project
 from research_os.project import create_project, load_project_manifest
 from research_os.sources import SourceRegistry
@@ -195,3 +196,47 @@ def test_recommendation_never_links_global_source_to_project(tmp_path: Path) -> 
 
     assert (project / "project.yaml").read_bytes() == before
     assert load_project_manifest(project).source_ids == ()
+
+
+def test_guide_shows_at_most_three_method_references_and_one_next_action(
+    tmp_path: Path,
+) -> None:
+    workspace, _, _ = _workspace(tmp_path)
+    project = workspace / "projects" / "medical-reasoning"
+    _write_medical_profile(project)
+
+    report = guide_project(workspace, "medical-reasoning")
+    rendered = render_guide(report)
+
+    assert 1 <= len(report.method_references) <= 3
+    assert rendered.count("## 下一步") == 1
+    assert rendered.count("## 方法学参考") == 1
+    assert "全局知识条目" in rendered
+
+
+def test_legacy_guide_without_knowledge_base_keeps_empty_references(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "projects").mkdir()
+    create_project(tmp_path, "Legacy", "legacy")
+
+    report = guide_project(tmp_path, "legacy")
+
+    assert report.method_references == ()
+    assert report.knowledge_issue == ""
+
+
+def test_corrupt_knowledge_base_does_not_replace_guide_next_action(
+    tmp_path: Path,
+) -> None:
+    workspace, _, _ = _workspace(tmp_path)
+    catalog = workspace / "library" / "knowledge" / "catalog.yaml"
+    catalog.write_text("entries: [", encoding="utf-8")
+
+    report = guide_project(workspace, "medical-reasoning")
+    rendered = render_guide(report)
+
+    assert report.next_action.skill == "research-project-init"
+    assert report.method_references == ()
+    assert "kb doctor" in report.knowledge_issue
+    assert rendered.count("## 下一步") == 1
