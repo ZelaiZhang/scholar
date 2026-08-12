@@ -18,6 +18,8 @@ from research_os.ideas import (
     save_idea_archive,
 )
 from research_os.project import create_project, link_project_sources
+from research_os.provider import CompletionResult
+from research_os.sources import SourceRegistry
 
 
 def _idea(run_id: str, *, novelty_checked: bool = False) -> IdeaRecord:
@@ -100,6 +102,47 @@ def _project(tmp_path: Path) -> Path:
     project = create_project(tmp_path, "Topic A", "topic-a")
     link_project_sources(tmp_path, "topic-a", ["src-a"])
     return project
+
+
+def _external_project(tmp_path: Path) -> Path:
+    project = create_project(tmp_path, "Topic A", "topic-a")
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "papers").mkdir()
+    source = tmp_path / "public-source.txt"
+    source.write_text("Public source with no medical identifiers.", encoding="utf-8")
+    record = SourceRegistry(library / "sources.jsonl").add(
+        str(source), external_api_allowed=True
+    )
+    link_project_sources(tmp_path, "topic-a", [record.source_id])
+    return project
+
+
+def _candidate_json(run_id: str, source_id: str) -> str:
+    idea = _idea(run_id)
+    idea = IdeaRecord(
+        **{**idea.__dict__, "evidence_source_ids": (source_id,)}
+    )
+    path_payload = {
+        "schema_version": 1,
+        "project_slug": "topic-a",
+        "ideas": [
+            {
+                **idea.__dict__,
+                "parent_ids": [],
+                "evidence_source_ids": [source_id],
+                "novelty": {
+                    **idea.novelty.__dict__,
+                    "queries": [],
+                    "nearest_source_ids": [],
+                },
+                "scores": idea.scores.__dict__,
+                "method_risks": list(idea.method_risks),
+                "medical_safety_risks": list(idea.medical_safety_risks),
+            }
+        ],
+    }
+    return json.dumps(path_payload)
 
 
 def test_cycle_creates_local_run_and_resumes_without_duplicate_work(
@@ -287,3 +330,221 @@ def test_approved_idea_must_match_the_reviewed_candidate(tmp_path: Path) -> None
     blocked = advance_cycle(tmp_path, "topic-a")
     assert blocked.state == "blocked"
     assert blocked.next_action == "restore_reviewed_idea"
+
+
+def test_provider_candidate_call_is_authorized_counted_and_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = _external_project(tmp_path)
+    linked_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    monkeypatch.setenv("TEST_API_KEY", "super-secret")
+
+    class FakeProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(
+            self, system: str, user: str, *, external_api_allowed: bool
+        ) -> CompletionResult:
+            assert external_api_allowed is True
+            assert "candidate" in system.lower()
+            assert "External co-researcher context" in user
+            return CompletionResult(
+                content=_candidate_json(active_run_id[0], linked_id),
+                provenance={"model": self.model, "usage": {"total_tokens": 17}},
+            )
+
+    first = advance_cycle(tmp_path, "topic-a")
+    active_run_id = [first.run_id]
+    action = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=FakeProvider(),
+        allow_external_api=True,
+    )
+
+    assert action.state == "novelty_check"
+    assert action.manifest.calls_used == 1
+    assert (project / "cycles" / first.run_id / "candidates.yaml").is_file()
+    provenance = list(
+        (project / "cycles" / first.run_id / "provenance").glob("call-*.json")
+    )
+    assert len(provenance) == 2
+    assert "super-secret" not in "".join(
+        path.read_text(encoding="utf-8") for path in provenance
+    )
+
+
+def test_invalid_provider_output_consumes_budget_without_committing_artifact(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+
+    class InvalidProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(self, *_args: object, **_kwargs: object) -> CompletionResult:
+            return CompletionResult(content="{broken", provenance={"model": self.model})
+
+    action = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=InvalidProvider(),
+        allow_external_api=True,
+    )
+
+    assert action.state == "blocked"
+    assert action.manifest.calls_used == 1
+    assert not (
+        project / "cycles" / action.run_id / "candidates.yaml"
+    ).exists()
+    finished = list(
+        (project / "cycles" / action.run_id / "provenance").glob("call-*-finished.json")
+    )
+    assert len(finished) == 1
+    assert '"status": "invalid_output"' in finished[0].read_text(encoding="utf-8")
+
+
+def test_review_provider_preflights_required_budget_before_any_dispatch(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a", max_calls=2)
+    _write_candidates(project, created.run_id, checked=True)
+    review_action = advance_cycle(tmp_path, "topic-a", max_calls=2)
+    assert review_action.state == "independent_review"
+
+    class ProviderThatMustNotRun:
+        def complete(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("partial independent review dispatch")
+
+    exhausted = advance_cycle(
+        tmp_path,
+        "topic-a",
+        max_calls=2,
+        provider=ProviderThatMustNotRun(),
+        allow_external_api=True,
+    )
+    assert exhausted.state == "budget_exhausted"
+    assert exhausted.manifest.calls_used == 0
+
+
+def test_provider_completes_three_independent_reviews_then_meta_review(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    source_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    created = advance_cycle(tmp_path, "topic-a")
+    checked = _idea(created.run_id, novelty_checked=True)
+    checked = IdeaRecord(
+        **{
+            **checked.__dict__,
+            "evidence_source_ids": (source_id,),
+            "novelty": NoveltyEvidence(
+                status="checked",
+                queries=checked.novelty.queries,
+                nearest_source_ids=(source_id,),
+                differences=checked.novelty.differences,
+                unresolved_overlap="",
+            ),
+        }
+    )
+    save_idea_archive(
+        project / "cycles" / created.run_id / "candidates.yaml",
+        IdeaArchive(1, "topic-a", (checked,)),
+    )
+    ready = advance_cycle(tmp_path, "topic-a")
+    assert ready.state == "independent_review"
+    seen_roles: list[str] = []
+
+    class ReviewProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(
+            self, system: str, _user: str, *, external_api_allowed: bool
+        ) -> CompletionResult:
+            assert external_api_allowed
+            if "meta-review" in system:
+                return CompletionResult(
+                    content=json.dumps(
+                        {
+                            "schema_version": 1,
+                            "run_id": created.run_id,
+                            "consensus": ["Testable with scope revision"],
+                            "conflicts": ["Novelty confidence differs"],
+                            "blocking_issues": [],
+                            "shortlist_ids": ["idea-0001"],
+                            "rationale_by_idea": {
+                                "idea-0001": "Best bounded option"
+                            },
+                        }
+                    ),
+                    provenance={"model": self.model},
+                )
+            role = next(
+                role
+                for role in ("novelty", "methods", "medical-safety")
+                if role in system
+            )
+            seen_roles.append(role)
+            return CompletionResult(
+                content=json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": created.run_id,
+                        "role": role,
+                        "assessments": [_assessment("idea-0001")],
+                    }
+                ),
+                provenance={"model": self.model},
+            )
+
+    action = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=ReviewProvider(),
+        allow_external_api=True,
+    )
+
+    assert action.state == "awaiting_human_decision"
+    assert action.manifest.calls_used == 4
+    assert seen_roles == ["novelty", "methods", "medical-safety"]
+    for role in seen_roles:
+        assert (
+            project / "cycles" / created.run_id / "reviews" / f"{role}.json"
+        ).is_file()
+    assert (project / "cycles" / created.run_id / "meta-review.json").is_file()
+
+
+def test_provider_never_fakes_novelty_search(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id, checked=False)
+    novelty = advance_cycle(tmp_path, "topic-a")
+    assert novelty.state == "novelty_check"
+
+    class ProviderThatMustNotRun:
+        def complete(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("provider attempted to fake novelty search")
+
+    action = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=ProviderThatMustNotRun(),
+        allow_external_api=True,
+    )
+    assert action.state == "novelty_check"
+    assert action.next_action == "document_novelty"
+    assert action.manifest.calls_used == 0

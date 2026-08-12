@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 from dataclasses import dataclass, replace
@@ -25,6 +26,8 @@ from research_os.project import (
     resolve_project_path,
 )
 from research_os.review import load_meta_review, load_review_bundle
+from research_os.review import load_independent_review
+from research_os.cycle_context import ExternalContextSnapshot, build_external_context
 
 
 DEFAULT_MAX_IDEAS = 4
@@ -130,6 +133,20 @@ def _sha256_file(path: Path) -> str:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    identity = _directory_identity(path.parent)
+    atomic_write_text(
+        path,
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        expected_parent_identity=identity,
+    )
 
 
 def _manifest_payload(manifest: CycleManifest) -> dict[str, object]:
@@ -271,6 +288,310 @@ def _record(
         artifact_hash=_sha256_file(artifact),
         summary=summary,
     )
+
+
+def _provider_public_metadata(provider: object) -> dict[str, object]:
+    metadata: dict[str, object] = {}
+    for field in ("base_url", "model", "temperature", "timeout"):
+        value = getattr(provider, field, None)
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            metadata[field] = value
+    return metadata
+
+
+def _begin_provider_call(
+    project: Path,
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    provider: object,
+    context: ExternalContextSnapshot,
+    stage: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> tuple[CycleManifest, int]:
+    if manifest.calls_used >= manifest.max_calls:
+        raise RuntimeError("provider call budget is exhausted")
+    call_number = manifest.calls_used + 1
+    updated = replace(
+        manifest,
+        calls_used=call_number,
+        updated_at=_utc_now(),
+        last_error="",
+    )
+    save_cycle_manifest(run_dir / "manifest.yaml", updated)
+    provenance_dir = _direct_directory(run_dir, "provenance", create=True)
+    started = provenance_dir / f"call-{call_number:03d}-started.json"
+    _write_json(
+        started,
+        {
+            "schema_version": 1,
+            "run_id": manifest.run_id,
+            "call_number": call_number,
+            "stage": stage,
+            "status": "started",
+            "started_at": _utc_now(),
+            "provider": _provider_public_metadata(provider),
+            "context_sha256": context.sha256,
+            "context_source_id": context.context_source_id,
+            "input_source_ids": list(context.input_source_ids),
+            "system_prompt_sha256": _sha256_text(system_prompt),
+            "user_prompt_sha256": _sha256_text(user_prompt),
+        },
+    )
+    _record(
+        project,
+        event_type="provider_call_started",
+        run_id=manifest.run_id,
+        artifact=started,
+        summary=f"Reserved provider call {call_number} for {stage} before dispatch.",
+    )
+    return updated, call_number
+
+
+def _finish_provider_call(
+    project: Path,
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    call_number: int,
+    stage: str,
+    status: str,
+    response_content: str | None,
+    provider_provenance: dict[str, object] | None,
+    error_type: str = "",
+) -> Path:
+    provenance_dir = _direct_directory(run_dir, "provenance", create=True)
+    finished = provenance_dir / f"call-{call_number:03d}-finished.json"
+    response_hash = _sha256_text(response_content) if response_content is not None else ""
+    _write_json(
+        finished,
+        {
+            "schema_version": 1,
+            "run_id": manifest.run_id,
+            "call_number": call_number,
+            "stage": stage,
+            "status": status,
+            "finished_at": _utc_now(),
+            "response_sha256": response_hash,
+            "response_bytes": (
+                len(response_content.encode("utf-8"))
+                if response_content is not None
+                else 0
+            ),
+            "provider_provenance": _sanitize_provider_provenance(
+                provider_provenance or {}
+            ),
+            "error_type": error_type,
+        },
+    )
+    _record(
+        project,
+        event_type="provider_call_finished",
+        run_id=manifest.run_id,
+        artifact=finished,
+        summary=f"Provider call {call_number} finished with status {status}.",
+    )
+    return finished
+
+
+def _sanitize_provider_provenance(raw: dict[str, object]) -> dict[str, object]:
+    allowed = {
+        "provider_base_url",
+        "model",
+        "reported_model",
+        "created_at",
+        "temperature",
+        "system_prompt_sha256",
+        "user_prompt_sha256",
+        "usage",
+    }
+    clean: dict[str, object] = {}
+    for key in allowed:
+        value = raw.get(key)
+        if key == "usage" and isinstance(value, dict):
+            clean[key] = {
+                str(name): count
+                for name, count in value.items()
+                if isinstance(name, str)
+                and isinstance(count, (int, float))
+                and not isinstance(count, bool)
+            }
+        elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            clean[key] = value
+    return clean
+
+
+def _dispatch_provider(
+    project: Path,
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    provider: object,
+    context: ExternalContextSnapshot,
+    stage: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> tuple[CycleManifest, int, object | None, str | None]:
+    updated, call_number = _begin_provider_call(
+        project,
+        run_dir,
+        manifest,
+        provider=provider,
+        context=context,
+        stage=stage,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
+    try:
+        complete = getattr(provider, "complete")
+        result = complete(
+            system_prompt,
+            user_prompt,
+            external_api_allowed=True,
+        )
+        content = result.content
+        provenance = result.provenance
+        if not isinstance(content, str):
+            raise ValueError("provider result content must be text")
+        if len(content.encode("utf-8")) > MAX_ARTIFACT_BYTES:
+            raise ValueError("provider response exceeds the 1 MiB limit")
+        if not isinstance(provenance, dict):
+            raise ValueError("provider provenance must be an object")
+    except Exception as exc:
+        _finish_provider_call(
+            project,
+            run_dir,
+            updated,
+            call_number=call_number,
+            stage=stage,
+            status="provider_error",
+            response_content=None,
+            provider_provenance=None,
+            error_type=type(exc).__name__,
+        )
+        return updated, call_number, None, f"provider call failed: {type(exc).__name__}"
+    return updated, call_number, result, None
+
+
+def _mark_provider_output(
+    project: Path,
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    call_number: int,
+    stage: str,
+    result: object,
+    status: str,
+    error_type: str = "",
+) -> None:
+    _finish_provider_call(
+        project,
+        run_dir,
+        manifest,
+        call_number=call_number,
+        stage=stage,
+        status=status,
+        response_content=getattr(result, "content"),
+        provider_provenance=getattr(result, "provenance"),
+        error_type=error_type,
+    )
+
+
+def _temporary_response(run_dir: Path, content: str, *, suffix: str) -> Path:
+    path = run_dir / f".provider-response-{secrets.token_hex(8)}{suffix}"
+    atomic_write_text(
+        path,
+        content,
+        expected_parent_identity=_directory_identity(run_dir),
+    )
+    return path
+
+
+def _commit_provider_candidates(
+    run_dir: Path,
+    target: Path,
+    content: str,
+    *,
+    manifest: CycleManifest,
+    source_ids: set[str],
+    call_number: int,
+    provider_provenance: dict[str, object],
+) -> None:
+    temporary = _temporary_response(run_dir, content, suffix=".json")
+    try:
+        candidates = _load_candidates(
+            temporary, manifest=manifest, source_ids=source_ids
+        )
+        clean_provenance = _sanitize_provider_provenance(provider_provenance)
+        generated = IdeaArchive(
+            1,
+            candidates.project_slug,
+            tuple(
+                replace(
+                    idea,
+                    provenance={
+                        "provider_call": call_number,
+                        "response_sha256": _sha256_text(content),
+                        **clean_provenance,
+                    },
+                )
+                for idea in candidates.ideas
+            ),
+        )
+        save_idea_archive(target, generated)
+        _load_candidates(target, manifest=manifest, source_ids=source_ids)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _commit_provider_review(
+    run_dir: Path,
+    target: Path,
+    content: str,
+    *,
+    role: str,
+    candidate_ids: set[str],
+) -> None:
+    temporary = _temporary_response(run_dir, content, suffix=".json")
+    try:
+        load_independent_review(
+            temporary,
+            expected_role=role,
+            expected_idea_ids=candidate_ids,
+        )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            target,
+            content.rstrip() + "\n",
+            expected_parent_identity=_directory_identity(target.parent),
+        )
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _commit_provider_meta_review(
+    run_dir: Path,
+    target: Path,
+    content: str,
+    *,
+    candidate_ids: set[str],
+    run_id: str,
+) -> None:
+    temporary = _temporary_response(run_dir, content, suffix=".json")
+    try:
+        load_meta_review(
+            temporary,
+            expected_idea_ids=candidate_ids,
+            expected_run_id=run_id,
+        )
+        atomic_write_text(
+            target,
+            content.rstrip() + "\n",
+            expected_parent_identity=_directory_identity(target.parent),
+        )
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _create_run(
@@ -490,6 +811,7 @@ def advance_cycle(
     max_ideas: int | None = None,
     max_calls: int | None = None,
     provider: object | None = None,
+    allow_external_api: bool = False,
 ) -> CycleAction:
     requested_max_ideas = _validate_bound(
         max_ideas, name="max_ideas", default=DEFAULT_MAX_IDEAS, upper=10
@@ -520,22 +842,92 @@ def advance_cycle(
     reviews_dir = run_dir / "reviews"
     meta_path = run_dir / "meta-review.json"
 
-    if provider is not None and manifest.calls_used >= manifest.max_calls:
-        return _action(
-            manifest,
-            state="budget_exhausted",
-            next_action="increase_budget_or_continue_locally",
-            target=run_dir / "work-packet.md",
-            reason="The provider call budget is exhausted before dispatch.",
-        )
-
     if manifest.state == "candidate_generation":
         if not candidates_path.is_file():
-            return _action(
+            if provider is None:
+                return _action(
+                    manifest,
+                    next_action="create_candidates",
+                    target=candidates_path,
+                    reason="Create a strict local candidate artifact; no model call was made.",
+                )
+            if manifest.max_calls - manifest.calls_used < 1:
+                return _action(
+                    manifest,
+                    state="budget_exhausted",
+                    next_action="increase_budget_or_continue_locally",
+                    target=run_dir / "work-packet.md",
+                    reason="Candidate generation requires one remaining provider call.",
+                )
+            context = build_external_context(
+                workspace,
+                slug,
+                run_dir=run_dir,
+                allow_external_api=allow_external_api,
+            )
+            system_prompt = (
+                "Generate a strict JSON candidate archive for this research cycle. "
+                "Use schema_version 1, project_slug, and no more than max_ideas Ideas. "
+                "Every Idea must remain draft, cite only listed source IDs, contain a "
+                "falsifiable failure criterion, and leave novelty pending. Never select "
+                "an Idea and never propose executing an experiment. Return JSON only."
+            )
+            user_prompt = (
+                context.content
+                + f"\nRun ID: {manifest.run_id}\nMaximum Ideas: {manifest.max_ideas}\n"
+            )
+            manifest, call_number, result, error = _dispatch_provider(
+                project,
+                run_dir,
                 manifest,
-                next_action="create_candidates",
-                target=candidates_path,
-                reason="Create a strict local candidate artifact; no model call was made.",
+                provider=provider,
+                context=context,
+                stage="candidate_generation",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            if error is not None or result is None:
+                return _blocked(
+                    manifest,
+                    next_action="retry_or_continue_candidates_locally",
+                    target=candidates_path,
+                    reason=error or "provider call failed",
+                )
+            try:
+                _commit_provider_candidates(
+                    run_dir,
+                    candidates_path,
+                    result.content,
+                    manifest=manifest,
+                    source_ids=source_ids,
+                    call_number=call_number,
+                    provider_provenance=result.provenance,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                _mark_provider_output(
+                    project,
+                    run_dir,
+                    manifest,
+                    call_number=call_number,
+                    stage="candidate_generation",
+                    result=result,
+                    status="invalid_output",
+                    error_type=type(exc).__name__,
+                )
+                return _blocked(
+                    manifest,
+                    next_action="retry_or_continue_candidates_locally",
+                    target=candidates_path,
+                    reason=f"provider candidate output was invalid: {exc}",
+                )
+            _mark_provider_output(
+                project,
+                run_dir,
+                manifest,
+                call_number=call_number,
+                stage="candidate_generation",
+                result=result,
+                status="committed",
             )
         try:
             candidates = _load_candidates(
@@ -635,13 +1027,101 @@ def advance_cycle(
             "methods",
             "medical-safety",
         )]
-        if not all(path.is_file() for path in review_paths):
+        missing_roles = [
+            role
+            for role, path in zip(
+                ("novelty", "methods", "medical-safety"), review_paths
+            )
+            if not path.is_file()
+        ]
+        if missing_roles and provider is None:
             return _action(
                 manifest,
                 next_action="create_independent_reviews",
                 target=reviews_dir,
                 reason="Create all three role-separated review files.",
             )
+        if missing_roles:
+            remaining = manifest.max_calls - manifest.calls_used
+            if remaining < len(missing_roles):
+                return _action(
+                    manifest,
+                    state="budget_exhausted",
+                    next_action="increase_budget_or_continue_locally",
+                    target=reviews_dir,
+                    reason=(
+                        f"The independent review stage needs {len(missing_roles)} "
+                        f"calls but only {remaining} remain; no partial dispatch occurred."
+                    ),
+                )
+            context = build_external_context(
+                workspace,
+                slug,
+                run_dir=run_dir,
+                allow_external_api=allow_external_api,
+            )
+            candidate_text = candidates_path.read_text(encoding="utf-8")
+            reviews_dir.mkdir(exist_ok=True)
+            for role in missing_roles:
+                system_prompt = (
+                    f"Act only as the independent {role} reviewer. Return the strict "
+                    "schema-version-1 JSON review for every candidate. Do not read or "
+                    "imitate another reviewer, do not select an Idea, and do not execute "
+                    "experiments. Recommendations are advance, revise, or reject."
+                )
+                user_prompt = context.content + "\n# Frozen candidates\n" + candidate_text
+                manifest, call_number, result, error = _dispatch_provider(
+                    project,
+                    run_dir,
+                    manifest,
+                    provider=provider,
+                    context=context,
+                    stage=f"independent_review:{role}",
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                )
+                target = reviews_dir / f"{role}.json"
+                if error is not None or result is None:
+                    return _blocked(
+                        manifest,
+                        next_action="retry_missing_independent_review",
+                        target=target,
+                        reason=error or "provider call failed",
+                    )
+                try:
+                    _commit_provider_review(
+                        run_dir,
+                        target,
+                        result.content,
+                        role=role,
+                        candidate_ids=candidate_ids,
+                    )
+                except (OSError, UnicodeError, ValueError) as exc:
+                    _mark_provider_output(
+                        project,
+                        run_dir,
+                        manifest,
+                        call_number=call_number,
+                        stage=f"independent_review:{role}",
+                        result=result,
+                        status="invalid_output",
+                        error_type=type(exc).__name__,
+                    )
+                    return _blocked(
+                        manifest,
+                        next_action="retry_missing_independent_review",
+                        target=target,
+                        reason=f"provider review output was invalid: {exc}",
+                    )
+                _mark_provider_output(
+                    project,
+                    run_dir,
+                    manifest,
+                    call_number=call_number,
+                    stage=f"independent_review:{role}",
+                    result=result,
+                    status="committed",
+                )
         try:
             load_review_bundle(reviews_dir, expected_idea_ids=candidate_ids)
         except ValueError as exc:
@@ -679,11 +1159,87 @@ def advance_cycle(
 
     if manifest.state == "meta_review":
         if not meta_path.is_file():
-            return _action(
+            if provider is None:
+                return _action(
+                    manifest,
+                    next_action="create_meta_review",
+                    target=meta_path,
+                    reason="Reconcile consensus and conflicts without selecting an Idea.",
+                )
+            if manifest.max_calls - manifest.calls_used < 1:
+                return _action(
+                    manifest,
+                    state="budget_exhausted",
+                    next_action="increase_budget_or_continue_locally",
+                    target=meta_path,
+                    reason="Meta-review requires one remaining provider call.",
+                )
+            context = build_external_context(
+                workspace,
+                slug,
+                run_dir=run_dir,
+                allow_external_api=allow_external_api,
+            )
+            review_text = "\n".join(
+                (reviews_dir / f"{role}.json").read_text(encoding="utf-8")
+                for role in ("novelty", "methods", "medical-safety")
+            )
+            system_prompt = (
+                "Create a strict schema-version-1 JSON meta-review from the three "
+                "independent reports. Preserve disagreements and blocking issues. You "
+                "may shortlist but must never select an Idea or execute experiments."
+            )
+            user_prompt = context.content + "\n# Independent reviews\n" + review_text
+            manifest, call_number, result, error = _dispatch_provider(
+                project,
+                run_dir,
                 manifest,
-                next_action="create_meta_review",
-                target=meta_path,
-                reason="Reconcile consensus and conflicts without selecting an Idea.",
+                provider=provider,
+                context=context,
+                stage="meta_review",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            if error is not None or result is None:
+                return _blocked(
+                    manifest,
+                    next_action="retry_or_continue_meta_review_locally",
+                    target=meta_path,
+                    reason=error or "provider call failed",
+                )
+            try:
+                _commit_provider_meta_review(
+                    run_dir,
+                    meta_path,
+                    result.content,
+                    candidate_ids=candidate_ids,
+                    run_id=manifest.run_id,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                _mark_provider_output(
+                    project,
+                    run_dir,
+                    manifest,
+                    call_number=call_number,
+                    stage="meta_review",
+                    result=result,
+                    status="invalid_output",
+                    error_type=type(exc).__name__,
+                )
+                return _blocked(
+                    manifest,
+                    next_action="retry_or_continue_meta_review_locally",
+                    target=meta_path,
+                    reason=f"provider meta-review output was invalid: {exc}",
+                )
+            _mark_provider_output(
+                project,
+                run_dir,
+                manifest,
+                call_number=call_number,
+                stage="meta_review",
+                result=result,
+                status="committed",
             )
         try:
             meta = load_meta_review(
