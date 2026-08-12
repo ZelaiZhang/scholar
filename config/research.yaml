@@ -1,0 +1,47 @@
+version: 1
+language: zh-CN
+
+privacy:
+  allow_identifiable_health_data: false
+  external_api_default: false
+  allowed_inputs:
+    - public_paper
+    - public_webpage
+    - public_dataset_documentation
+    - deidentified_example
+    - researcher_note
+
+evidence:
+  require_locator_for_verified_fact: true
+  allowed_claim_types:
+    - fact
+    - inference
+    - hypothesis
+  allowed_statuses:
+    - unverified
+    - partially_verified
+    - verified
+    - conflicted
+
+workflow:
+  stages:
+    - brief
+    - intake
+    - reading
+    - synthesis
+    - idea
+    - design
+    - analysis
+    - writing
+    - review
+  require_human_gate_before:
+    - idea
+    - writing
+    - submission
+
+execution:
+  allow_training: false
+  allow_finetuning: false
+  allow_quantization: false
+  allow_reinforcement_learning: false
+

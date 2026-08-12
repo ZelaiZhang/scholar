@@ -1,0 +1,24 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# 本地原始资料与缓存
+inbox/**/*.pdf
+inbox/**/*.docx
+library/sources/**/*.pdf
+library/sources/**/*.docx
+.cache/
+
+# 可包含个人端点选择的本地配置；示例配置仍被跟踪
+config/providers.yaml
+
+# 编辑器与系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
