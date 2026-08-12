@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Sequence
 
+from research_os.dashboard import ProjectDashboard, build_project_dashboard
 from research_os.doctor import render_doctor, run_doctor
 from research_os.cycle import advance_cycle, approve_active_cycle_idea
 from research_os.evidence import load_ledger, render_validation_report, validate_ledger
@@ -58,6 +59,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guide_parser.add_argument("--project", help="课题 slug；只有一个课题时可省略")
     guide_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    dashboard_parser = subparsers.add_parser(
+        "dashboard", help="只读汇总课题状态、证据、风险和今日行动"
+    )
+    dashboard_parser.add_argument("--project", required=True, help="课题 slug")
+    dashboard_parser.add_argument(
+        "--as-of", default="", help="状态截止日期 YYYY-MM-DD"
+    )
+    dashboard_parser.add_argument(
+        "--format", choices=("text", "json"), default="text"
+    )
+    dashboard_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     cycle_parser = subparsers.add_parser(
         "cycle", help="创建或恢复有界、可审计的科研循环"
@@ -493,6 +506,173 @@ def _render_kb_recommend(recommendations) -> str:
     return "\n".join(lines)
 
 
+def _dashboard_payload(snapshot: ProjectDashboard) -> dict[str, object]:
+    return {
+        "schema_version": snapshot.schema_version,
+        "as_of": snapshot.as_of,
+        "project": {
+            "title": snapshot.project.title,
+            "slug": snapshot.project.slug,
+            "stage": snapshot.project.stage,
+            "state": snapshot.project.state,
+            "blockers": list(snapshot.project.blockers),
+        },
+        "evidence": {
+            "linked_sources": snapshot.evidence.linked_sources,
+            "verified_sources": snapshot.evidence.verified_sources,
+            "stale_or_unknown_source_ids": list(
+                snapshot.evidence.stale_or_unknown_source_ids
+            ),
+            "claims": snapshot.evidence.claims,
+            "support_links": snapshot.evidence.support_links,
+            "opposition_links": snapshot.evidence.opposition_links,
+            "conflicted_claims": snapshot.evidence.conflicted_claims,
+            "claims_with_limitations": snapshot.evidence.claims_with_limitations,
+            "validation_issues": [
+                {
+                    "code": issue.code,
+                    "claim_id": issue.claim_id,
+                    "message": issue.message,
+                }
+                for issue in snapshot.evidence.validation_issues
+            ],
+        },
+        "idea": {
+            "run_id": snapshot.idea.run_id,
+            "cycle_state": snapshot.idea.cycle_state,
+            "candidate_count": snapshot.idea.candidate_count,
+            "selected_idea_ids": list(snapshot.idea.selected_idea_ids),
+            "human_decision_required": snapshot.idea.human_decision_required,
+            "calls_used": snapshot.idea.calls_used,
+            "max_calls": snapshot.idea.max_calls,
+        },
+        "recommendations": _recommendation_payload(snapshot.recommendations),
+        "risks": [
+            {
+                "code": risk.code,
+                "severity": risk.severity,
+                "state": risk.state,
+                "message": risk.message,
+                "trigger": risk.trigger,
+            }
+            for risk in snapshot.risks
+        ],
+        "actions": [
+            {
+                "code": action.code,
+                "priority": action.priority,
+                "category": action.category,
+                "rationale": action.rationale,
+                "expected_artifact": action.expected_artifact,
+                "command": action.command,
+            }
+            for action in snapshot.actions
+        ],
+    }
+
+
+def _render_dashboard(snapshot: ProjectDashboard) -> str:
+    state_labels = {
+        "ready": "可推进",
+        "in_progress": "进行中",
+        "blocked": "受阻",
+        "awaiting_human": "等待人工决策",
+    }
+    lines = [
+        f"# {snapshot.project.title} · 课题研究驾驶舱",
+        "",
+        f"- 截止日期: {snapshot.as_of}",
+        "- 模式: 只读、本地、无外部 API。",
+        "",
+        "## 课题状态",
+        "",
+        f"- 当前阶段: {snapshot.project.stage}",
+        f"- 状态: {state_labels[snapshot.project.state]}",
+    ]
+    if snapshot.project.blockers:
+        lines.extend(
+            f"- 阻塞: {blocker}" for blocker in snapshot.project.blockers
+        )
+    else:
+        lines.append("- 阻塞: 无")
+    lines.extend(
+        [
+            "",
+            "## 证据健康度",
+            "",
+            (
+                f"- 来源: {snapshot.evidence.verified_sources}/"
+                f"{snapshot.evidence.linked_sources} 个已核验"
+            ),
+            f"- Claims: {snapshot.evidence.claims}",
+            (
+                f"- 支持/反对链接: {snapshot.evidence.support_links}/"
+                f"{snapshot.evidence.opposition_links}"
+            ),
+            f"- 冲突 Claims: {snapshot.evidence.conflicted_claims}",
+            f"- 含限制说明: {snapshot.evidence.claims_with_limitations}",
+            f"- 校验问题: {len(snapshot.evidence.validation_issues)}",
+            "",
+            "## Idea 与决策",
+            "",
+            f"- Run: {snapshot.idea.run_id or '-'}",
+            f"- 循环状态: {snapshot.idea.cycle_state}",
+            f"- 候选数: {snapshot.idea.candidate_count}",
+            (
+                "- 人工决策: 需要"
+                if snapshot.idea.human_decision_required
+                else "- 人工决策: 当前不需要"
+            ),
+            (
+                "- 已选 Idea: "
+                + (", ".join(snapshot.idea.selected_idea_ids) or "-")
+            ),
+            "",
+            "## 方法学参考",
+            "",
+            "全局知识条目只是方法学指导，不会自动成为当前课题引用证据。",
+        ]
+    )
+    if snapshot.recommendations:
+        for item in snapshot.recommendations:
+            lines.append(
+                f"- **{item.title}**（{item.kind}）：{item.reason} "
+                f"[核验范围: {item.verification_scope}]"
+            )
+    else:
+        lines.append("- 当前阶段暂无可用方法学条目。")
+    lines.extend(["", "## 风险雷达", ""])
+    if snapshot.risks:
+        for risk in snapshot.risks:
+            lines.extend(
+                [
+                    f"- **{risk.code}** [{risk.severity}/{risk.state}] {risk.message}",
+                    f"  触发依据: `{risk.trigger}`",
+                ]
+            )
+    else:
+        lines.append("- 未发现由当前结构化事实触发的风险；未知状态不会被报告为已确认缺陷。")
+    lines.extend(["", "## 今日三个行动", ""])
+    if snapshot.actions:
+        for index, action in enumerate(snapshot.actions, 1):
+            lines.extend(
+                [
+                    f"### {index}. {action.code}",
+                    "",
+                    f"- 原因: {action.rationale}",
+                    f"- 预期产物: `{action.expected_artifact}`",
+                    "",
+                    "```text",
+                    action.command,
+                    "```",
+                    "",
+                ]
+            )
+    else:
+        lines.append("- 当前没有可安全生成的行动。")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _knowledge_stage_for_guide(report) -> str:
     skill_to_stage = {
         "research-project-init": "problem-definition",
@@ -544,6 +724,30 @@ def _run(args: argparse.Namespace) -> int:
                 )
             slug = slugs[0]
         print(render_guide(guide_project(args.workspace, slug)), end="")
+        return 0
+    if args.command == "dashboard":
+        if args.as_of:
+            try:
+                as_of = date.fromisoformat(args.as_of)
+            except ValueError as exc:
+                raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
+        else:
+            as_of = date.today()
+        snapshot = build_project_dashboard(
+            args.workspace,
+            args.project,
+            as_of=as_of,
+        )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    _dashboard_payload(snapshot),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(_render_dashboard(snapshot), end="")
         return 0
     if args.command == "kb":
         if args.kb_command == "doctor":
