@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -115,11 +116,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _preflight_project(workspace: Path, slug: str | None) -> None:
+@dataclass(frozen=True)
+class _ProjectTransactionState:
+    slug: str
+    path: Path
+    directory_identity: tuple[int, int]
+    manifest_path: Path
+    manifest_snapshot: bytes | None
+
+
+def _path_identity(path: Path) -> tuple[int, int]:
+    metadata = path.stat()
+    return metadata.st_dev, metadata.st_ino
+
+
+def _preflight_project(
+    workspace: Path, slug: str | None
+) -> _ProjectTransactionState | None:
     if slug is None:
-        return
+        return None
     path = resolve_project_path(workspace, slug, require_exists=True)
     load_project_manifest(path, allow_legacy=True)
+    manifest_path = path / "project.yaml"
+    return _ProjectTransactionState(
+        slug=slug,
+        path=path,
+        directory_identity=_path_identity(path),
+        manifest_path=manifest_path,
+        manifest_snapshot=_snapshot_file(manifest_path),
+    )
 
 
 def _project_slugs(workspace: Path) -> list[str]:
@@ -160,46 +185,58 @@ def _registry_path(workspace: Path) -> Path:
 
 def _link_sources_transactionally(
     workspace: Path,
-    slug: str | None,
+    project_state: _ProjectTransactionState | None,
     source_ids: list[str],
     registry_path: Path,
     registry_snapshot: bytes | None,
+    registry_directory_identity: tuple[int, int],
 ) -> None:
-    if slug is None:
+    if project_state is None:
         return
-    project_manifest: Path | None = None
-    project_snapshot: bytes | None = None
     try:
-        candidate_manifest = resolve_project_path(
-            workspace, slug, require_exists=True
-        ) / "project.yaml"
-        candidate_snapshot = _snapshot_file(candidate_manifest)
-        project_manifest = candidate_manifest
-        project_snapshot = candidate_snapshot
-        link_project_sources(workspace, slug, source_ids)
+        current_project = resolve_project_path(
+            workspace, project_state.slug, require_exists=True
+        )
+        if (
+            current_project != project_state.path
+            or _path_identity(current_project)
+            != project_state.directory_identity
+        ):
+            raise OSError(f"课题目录在来源登记期间被替换: {current_project}")
+        link_project_sources(workspace, project_state.slug, source_ids)
     except BaseException:
         rollback_errors: list[Exception] = []
         try:
             current_registry = _registry_path(workspace)
-            if current_registry != registry_path:
+            if (
+                current_registry != registry_path
+                or _path_identity(current_registry.parent)
+                != registry_directory_identity
+            ):
                 raise OSError(
-                    f"来源登记表路径在回滚前发生改变: {current_registry}"
+                    f"library 目录在回滚前被替换: {current_registry.parent}"
                 )
             _restore_file(registry_path, registry_snapshot)
         except (OSError, ValueError) as rollback_error:
             rollback_errors.append(rollback_error)
-        if project_manifest is not None:
-            try:
-                current_manifest = resolve_project_path(
-                    workspace, slug, require_exists=True
-                ) / "project.yaml"
-                if current_manifest != project_manifest:
-                    raise OSError(
-                        f"课题路径在回滚前发生改变: {current_manifest}"
-                    )
-                _restore_file(project_manifest, project_snapshot)
-            except (OSError, ValueError) as rollback_error:
-                rollback_errors.append(rollback_error)
+        try:
+            current_project = resolve_project_path(
+                workspace, project_state.slug, require_exists=True
+            )
+            if (
+                current_project != project_state.path
+                or _path_identity(current_project)
+                != project_state.directory_identity
+            ):
+                raise OSError(
+                    f"课题目录在回滚前被替换: {current_project}"
+                )
+            _restore_file(
+                project_state.manifest_path,
+                project_state.manifest_snapshot,
+            )
+        except (OSError, ValueError) as rollback_error:
+            rollback_errors.append(rollback_error)
         if rollback_errors:
             raise RuntimeError(
                 "来源关联失败，且事务回滚失败；立即运行 research-os doctor 检查工作区: "
@@ -237,8 +274,10 @@ def _run(args: argparse.Namespace) -> int:
         return 0
     if args.command == "add-source":
         workspace = args.workspace.resolve()
-        _preflight_project(workspace, args.project)
+        project_state = _preflight_project(workspace, args.project)
         registry = SourceRegistry(_registry_path(workspace))
+        registry.path.parent.mkdir(parents=True, exist_ok=True)
+        registry_directory_identity = _path_identity(registry.path.parent)
         registry_snapshot = _snapshot_file(registry.path)
         record = registry.add(
             args.source,
@@ -247,19 +286,22 @@ def _run(args: argparse.Namespace) -> int:
         )
         _link_sources_transactionally(
             workspace,
-            args.project,
+            project_state,
             [record.source_id],
             registry.path,
             registry_snapshot,
+            registry_directory_identity,
         )
         suffix = f"，已关联课题 {args.project}" if args.project else ""
         print(f"已登记来源: {record.source_id} ({record.kind}){suffix}")
         return 0
     if args.command == "add-sources":
         workspace = args.workspace.resolve()
-        _preflight_project(workspace, args.project)
+        project_state = _preflight_project(workspace, args.project)
         values = load_source_manifest(args.manifest.resolve())
         registry = SourceRegistry(_registry_path(workspace))
+        registry.path.parent.mkdir(parents=True, exist_ok=True)
+        registry_directory_identity = _path_identity(registry.path.parent)
         registry_snapshot = _snapshot_file(registry.path)
         result = registry.add_many(
             values,
@@ -268,10 +310,11 @@ def _run(args: argparse.Namespace) -> int:
         )
         _link_sources_transactionally(
             workspace,
-            args.project,
+            project_state,
             list(dict.fromkeys(record.source_id for record in result.records)),
             registry.path,
             registry_snapshot,
+            registry_directory_identity,
         )
         suffix = f"，关联课题 {args.project}" if args.project else ""
         print(

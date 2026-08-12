@@ -602,6 +602,84 @@ def test_cli_rollback_never_unlinks_through_replaced_library_link(
     assert (moved_library / "sources.jsonl").is_file()
 
 
+def test_cli_rollback_never_unlinks_replacement_library_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    library = tmp_path / "library"
+    moved_library = tmp_path / "moved-library"
+    replacement_registry = library / "sources.jsonl"
+
+    def replace_library_then_fail(*_args) -> None:
+        library.rename(moved_library)
+        library.mkdir()
+        replacement_registry.write_text(
+            "replacement sentinel\n", encoding="utf-8"
+        )
+        raise OSError("simulated real library replacement")
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", replace_library_then_fail
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-replacement-unlink",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert replacement_registry.read_text(encoding="utf-8") == (
+        "replacement sentinel\n"
+    )
+    assert (moved_library / "sources.jsonl").is_file()
+
+
+def test_cli_rollback_never_overwrites_replacement_project_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    moved_project = tmp_path / "moved-project"
+    replacement_manifest = project / "project.yaml"
+
+    def replace_project_then_fail(*_args) -> None:
+        project.rename(moved_project)
+        project.mkdir()
+        replacement_manifest.write_text(
+            "replacement sentinel\n", encoding="utf-8"
+        )
+        raise OSError("simulated real directory replacement")
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", replace_project_then_fail
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-replacement-overwrite",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert replacement_manifest.read_text(encoding="utf-8") == (
+        "replacement sentinel\n"
+    )
+    assert load_project_manifest(moved_project).source_ids == ()
+    assert not (tmp_path / "library" / "sources.jsonl").exists()
+
+
 def test_cli_preflights_project_before_registering_single_source(
     tmp_path: Path,
 ) -> None:
