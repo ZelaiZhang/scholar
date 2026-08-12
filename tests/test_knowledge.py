@@ -265,3 +265,27 @@ def test_knowledge_root_cannot_be_a_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="符号链接|目录联接"):
         load_knowledge_base(tmp_path)
+
+
+def test_bundled_v04_seed_library_meets_acceptance_floor() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    kb = load_knowledge_base(repo_root)
+
+    verified_cards = [
+        entry
+        for entry in kb.entries
+        if entry.source_id in kb.cards
+        and (
+            entry.verification.abstract == "verified"
+            or entry.verification.fulltext == "verified"
+        )
+    ]
+    assert len(kb.entries) >= 24
+    assert len(verified_cards) >= 16
+    assert sum(
+        entry.verification.fulltext == "verified" for entry in kb.entries
+    ) >= 8
+    assert len(list((kb.root / "maps").glob("*.md"))) == 5
+    assert len(list((kb.root / "playbooks").glob("*.md"))) == 4
+    assert (kb.root / "reporting-guidelines" / "applicability.yaml").is_file()

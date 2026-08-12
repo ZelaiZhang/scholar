@@ -37,6 +37,7 @@ TOPICS = {
     "reproducibility",
     "safety",
     "fairness",
+    "human-factors",
 }
 METHODS = {
     "agentic-research",
@@ -271,6 +272,8 @@ def _string_tuple(
 
 
 def _iso_date(value: object, context: str) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
     text = _string(value, context)
     try:
         date.fromisoformat(text)

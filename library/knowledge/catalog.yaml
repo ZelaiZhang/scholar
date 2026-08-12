@@ -1,0 +1,506 @@
+schema_version: 1
+entries:
+  - source_id: src-92920c311599e7a4
+    canonical: 10.1038/s41586-026-10265-5
+    title: Towards end-to-end automation of AI research
+    authors: [Chris Lu, Cong Lu, Robert Tjarko Lange, Yutaro Yamada]
+    year: 2026
+    source_type: paper
+    venue: Nature
+    topics: [ai-for-science, reproducibility, evaluation]
+    methods: [agentic-research, model-evaluation]
+    stages: [problem-definition, literature-search, idea-review, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41586-026-10265-5
+    license: CC-BY-4.0
+    notes: Research OS 有界科研循环的直接设计依据。
+  - source_id: src-26d41e1f9d50a2a6
+    canonical: "2502.18864"
+    title: Towards an AI co-scientist
+    authors: [Juraj Gottweis]
+    year: 2025
+    source_type: paper
+    venue: arXiv
+    topics: [ai-for-science, medical-ai]
+    methods: [agentic-research, llm]
+    stages: [problem-definition, idea-review, experiment-design, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2502.18864
+    license: arXiv-distribution
+    notes: 当前卡片仅核验摘要，不将实验声明外推为普遍能力。
+  - source_id: src-a214b5ba43aa47b4
+    canonical: 10.1038/s41586-023-06291-2
+    title: Large language models encode clinical knowledge
+    authors: [Karan Singhal]
+    year: 2023
+    source_type: paper
+    venue: Nature
+    topics: [medical-ai, evaluation, safety]
+    methods: [llm, model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41586-023-06291-2
+    license: publisher-open-page
+    notes: 医学问答评价需同时覆盖事实一致性、伤害、遗漏和偏差。
+  - source_id: src-645320e6e9773efa
+    canonical: 10.1038/s41586-025-08869-4
+    title: Towards accurate differential diagnosis with large language models
+    authors: [Daniel McDuff]
+    year: 2025
+    source_type: paper
+    venue: Nature
+    topics: [medical-ai, diagnostic-reasoning, evaluation]
+    methods: [llm, conversational-diagnosis, model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41586-025-08869-4
+    license: CC-BY-4.0
+    notes: 区分离线病例集、临床辅助和真实临床部署。
+  - source_id: src-db68e44456743d0b
+    canonical: 10.1038/s41586-025-08866-7
+    title: Towards conversational diagnostic artificial intelligence
+    authors: [Tao Tu]
+    year: 2025
+    source_type: paper
+    venue: Nature
+    topics: [medical-ai, diagnostic-reasoning, evaluation, human-factors]
+    methods: [llm, conversational-diagnosis, chain-of-thought]
+    stages: [problem-definition, experiment-design, result-interpretation, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41586-025-08866-7
+    license: CC-BY-4.0
+    notes: 模拟 OSCE 结果不能直接等同于日常临床实践。
+  - source_id: src-6cc9dfe0c8911536
+    canonical: "2201.11903"
+    title: Chain-of-Thought Prompting Elicits Reasoning in Large Language Models
+    authors: [Jason Wei, Xuezhi Wang, Dale Schuurmans]
+    year: 2022
+    source_type: paper
+    venue: NeurIPS 2022
+    topics: [reasoning-and-cot, evaluation]
+    methods: [chain-of-thought, llm]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2201.11903
+    license: arXiv-distribution
+    notes: 当前只使用摘要级方法定位；不把可见推理文本当作忠实内部过程。
+  - source_id: src-02a15b098d96a94d
+    canonical: "2203.11171"
+    title: Self-Consistency Improves Chain of Thought Reasoning in Language Models
+    authors: [Xuezhi Wang, Jason Wei, Dale Schuurmans]
+    year: 2022
+    source_type: paper
+    venue: ICLR 2023
+    topics: [reasoning-and-cot, evaluation]
+    methods: [self-consistency, chain-of-thought]
+    stages: [experiment-design, result-interpretation]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2203.11171
+    license: arXiv-distribution
+    notes: 多路径一致不等于事实正确或临床安全。
+  - source_id: src-20505c81992a1da0
+    canonical: "2305.20050"
+    title: Let's Verify Step by Step
+    authors: [Hunter Lightman, Vineet Kosaraju, Yura Burda]
+    year: 2023
+    source_type: paper
+    venue: ICLR 2024
+    topics: [reasoning-and-cot, evaluation]
+    methods: [process-supervision, model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2305.20050
+    license: arXiv-distribution
+    notes: MATH 结果不能直接外推到医学推理。
+  - source_id: src-8fc39e0ec1b6db48
+    canonical: "2005.11401"
+    title: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks
+    authors: [Patrick Lewis, Ethan Perez, Aleksandra Piktus]
+    year: 2020
+    source_type: paper
+    venue: NeurIPS 2020
+    topics: [rag-and-evidence, evaluation]
+    methods: [rag, llm]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2005.11401
+    license: arXiv-distribution
+    notes: 检索增强不自动保证召回相关性或生成忠实性。
+  - source_id: src-c478530005d3f8fe
+    canonical: "2310.11511"
+    title: Self-RAG Learning to Retrieve Generate and Critique through Self-Reflection
+    authors: [Akari Asai, Zeqiu Wu, Yizhong Wang]
+    year: 2023
+    source_type: paper
+    venue: ICLR 2024
+    topics: [rag-and-evidence, evaluation]
+    methods: [self-rag, rag, llm]
+    stages: [experiment-design, result-interpretation]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2310.11511
+    license: arXiv-distribution
+    notes: 反思 token 是模型机制，不是独立事实核验器。
+  - source_id: src-e504ba1ba9c3fffc
+    canonical: "2210.03629"
+    title: ReAct Synergizing Reasoning and Acting in Language Models
+    authors: [Shunyu Yao, Jeffrey Zhao, Dian Yu]
+    year: 2022
+    source_type: paper
+    venue: ICLR 2023
+    topics: [reasoning-and-cot, rag-and-evidence, ai-for-science]
+    methods: [chain-of-thought, agentic-research]
+    stages: [problem-definition, literature-search, idea-review]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2210.03629
+    license: arXiv-distribution
+    notes: Research OS 只借鉴工具—观察闭环，不保存隐藏思维链。
+  - source_id: src-b85d9dbf9c291e18
+    canonical: "2106.09685"
+    title: LoRA Low-Rank Adaptation of Large Language Models
+    authors: [Edward J. Hu, Yelong Shen, Phillip Wallis]
+    year: 2021
+    source_type: paper
+    venue: ICLR 2022
+    topics: [finetuning, evaluation]
+    methods: [lora, llm]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2106.09685
+    license: arXiv-distribution
+    notes: 原论文任务与模型范围不能代表所有后续 LLM。
+  - source_id: src-5324ffa2c26905b3
+    canonical: "2305.14314"
+    title: QLoRA Efficient Finetuning of Quantized LLMs
+    authors: [Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, Luke Zettlemoyer]
+    year: 2023
+    source_type: paper
+    venue: NeurIPS 2023
+    topics: [finetuning, quantization, evaluation]
+    methods: [qlora, lora]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2305.14314
+    license: arXiv-distribution
+    notes: 单卡 65B 是特定软硬件设置下的论文结果，不是通用预算承诺。
+  - source_id: src-3bdad22db8b074df
+    canonical: "2305.18290"
+    title: Direct Preference Optimization Your Language Model is Secretly a Reward Model
+    authors: [Rafael Rafailov, Archit Sharma, Eric Mitchell]
+    year: 2023
+    source_type: paper
+    venue: NeurIPS 2023
+    topics: [preference-optimization, evaluation]
+    methods: [dpo, llm]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2305.18290
+    license: arXiv-distribution
+    notes: 更简单的目标不消除偏好数据质量、覆盖与分布偏移问题。
+  - source_id: src-81125c1bcbaa0fea
+    canonical: "2203.02155"
+    title: Training language models to follow instructions with human feedback
+    authors: [Long Ouyang, Jeff Wu, Xu Jiang]
+    year: 2022
+    source_type: paper
+    venue: NeurIPS 2022
+    topics: [preference-optimization, safety, evaluation]
+    methods: [llm, model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2203.02155
+    license: arXiv-distribution
+    notes: 偏好分布上的人评提升不证明所有任务上的真实性。
+  - source_id: src-673242e41cbe2b4c
+    canonical: "1707.06347"
+    title: Proximal Policy Optimization Algorithms
+    authors: [John Schulman, Filip Wolski, Prafulla Dhariwal]
+    year: 2017
+    source_type: paper
+    venue: arXiv
+    topics: [preference-optimization, evaluation]
+    methods: [model-evaluation]
+    stages: [problem-definition, experiment-design]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/1707.06347
+    license: arXiv-distribution
+    notes: 基础 RL 算法背景；不是 RLHF 或医学对齐的充分方法。
+  - source_id: src-73d0f49d618fabfa
+    canonical: "1706.03741"
+    title: Deep reinforcement learning from human preferences
+    authors: [Paul Christiano, Jan Leike, Tom B. Brown]
+    year: 2017
+    source_type: paper
+    venue: NeurIPS 2017
+    topics: [preference-optimization, evaluation]
+    methods: [model-evaluation]
+    stages: [problem-definition, experiment-design]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/1706.03741
+    license: arXiv-distribution
+    notes: 轨迹偏好实验是现代 RLHF 的背景证据。
+  - source_id: src-0d1e60374ee440ce
+    canonical: "2210.17323"
+    title: GPTQ Accurate Post-Training Quantization for Generative Pre-trained Transformers
+    authors: [Elias Frantar, Saleh Ashkboos, Torsten Hoefler, Dan Alistarh]
+    year: 2022
+    source_type: paper
+    venue: ICLR 2023
+    topics: [quantization, evaluation]
+    methods: [model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2210.17323
+    license: arXiv-distribution
+    notes: 后训练权重量化必须同时报告质量、延迟、吞吐和目标硬件。
+  - source_id: src-95c4b65eb758c2cc
+    canonical: "2306.00978"
+    title: AWQ Activation-aware Weight Quantization for LLM Compression and Acceleration
+    authors: [Ji Lin, Jiaming Tang, Haotian Tang]
+    year: 2023
+    source_type: paper
+    venue: MLSys 2024
+    topics: [quantization, evaluation]
+    methods: [model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2306.00978
+    license: arXiv-distribution
+    notes: 激活感知权重量化结果依赖校准、kernel 和设备。
+  - source_id: src-842dd0204d45dd71
+    canonical: "2208.07339"
+    title: LLM.int8 8-bit Matrix Multiplication for Transformers at Scale
+    authors: [Tim Dettmers, Mike Lewis, Younes Belkada, Luke Zettlemoyer]
+    year: 2022
+    source_type: paper
+    venue: NeurIPS 2022
+    topics: [quantization, evaluation]
+    methods: [model-evaluation]
+    stages: [problem-definition, experiment-design, result-interpretation]
+    priority: background
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://arxiv.org/abs/2208.07339
+    license: arXiv-distribution
+    notes: 混合精度异常值处理是方法的一部分，不能只写“int8”。
+  - source_id: src-f3ba1ce9a4e3bf75
+    canonical: 10.1136/bmj-2023-078378
+    title: TRIPOD+AI statement updated guidance for reporting clinical prediction models
+    authors: [Gary S. Collins, Karel G. M. Moons, Paula Dhiman]
+    year: 2024
+    source_type: guideline
+    venue: BMJ
+    topics: [medical-ai, reporting-guidelines, evaluation]
+    methods: [reporting-guideline, prediction-model]
+    stages: [problem-definition, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.bmj.com/content/385/bmj-2023-078378
+    license: BMJ-open-access
+    notes: 正式主文 DOI；10.1136/bmj.q902 是勘误记录。
+  - source_id: src-1edddd770a903a09
+    canonical: 10.1136/bmj-2024-082505
+    title: PROBAST+AI updated quality risk of bias and applicability assessment tool
+    authors: [Karel G. M. Moons, Johanna A. A. Damen, Tabea Kaul]
+    year: 2025
+    source_type: guideline
+    venue: BMJ
+    topics: [medical-ai, evaluation, fairness]
+    methods: [risk-of-bias, prediction-model, fairness-assessment]
+    stages: [problem-definition, experiment-design, result-interpretation, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.bmj.com/content/388/bmj-2024-082505
+    license: BMJ-open-access
+    notes: 方法质量与性能评估的偏倚风险必须区分。
+  - source_id: src-6f9069bb04dddda8
+    canonical: 10.1038/s41591-025-03953-8
+    title: The STARD-AI reporting guideline for diagnostic accuracy studies using artificial intelligence
+    authors: [Viknesh Sounderajah, Ahmad Guni, Xiaoxuan Liu]
+    year: 2025
+    source_type: guideline
+    venue: Nature Medicine
+    topics: [medical-ai, reporting-guidelines, diagnostic-reasoning]
+    methods: [reporting-guideline, diagnostic-accuracy]
+    stages: [problem-definition, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: unverified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41591-025-03953-8
+    license: publisher-abstract
+    notes: 2026-07-13 发布作者更正；当前只登记摘要和版本信息。
+  - source_id: src-4be118b1d4653631
+    canonical: 10.1136/bmj-2024-081554
+    title: FUTURE-AI international consensus guideline for trustworthy and deployable AI in healthcare
+    authors: [Karim Lekadir, Alejandro F. Frangi, Antonio R. Porras]
+    year: 2025
+    source_type: guideline
+    venue: BMJ
+    topics: [medical-ai, safety, fairness, reproducibility]
+    methods: [risk-of-bias, fairness-assessment, human-factors]
+    stages: [problem-definition, experiment-design, result-interpretation, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.bmj.com/content/388/bmj-2024-081554
+    license: BMJ-open-access
+    notes: 生命周期可信与可部署框架，不替代具体研究类型报告规范。
+  - source_id: src-b40f902b303c5e58
+    canonical: 10.1038/s41591-022-01772-9
+    title: Reporting guideline for early-stage clinical evaluation of AI decision support systems DECIDE-AI
+    authors: [Baptiste Vasey, Myura Nagendran, Bruce Campbell]
+    year: 2022
+    source_type: guideline
+    venue: Nature Medicine
+    topics: [medical-ai, reporting-guidelines, human-factors, safety]
+    methods: [reporting-guideline, human-factors]
+    stages: [problem-definition, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41591-022-01772-9
+    license: publisher-open-page
+    notes: 适用于早期、小规模、真实临床环境中的 AI 决策支持评价。
+  - source_id: src-87fa2e6748d8dadb
+    canonical: 10.1148/ryai.240300
+    title: Checklist for Artificial Intelligence in Medical Imaging CLAIM 2024 Update
+    authors: [Ali S. Tejani, Michail E. Klontzas, Anthony A. Gatti]
+    year: 2024
+    source_type: guideline
+    venue: Radiology Artificial Intelligence
+    topics: [medical-ai, reporting-guidelines, evaluation]
+    methods: [reporting-guideline, model-evaluation]
+    stages: [problem-definition, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://pubs.rsna.org/doi/10.1148/ryai.240300
+    license: publisher-open-page
+    notes: 仅适用于医学影像 AI 报告，不应用于所有医疗文本研究。
+  - source_id: src-c4122ed25020a375
+    canonical: 10.1038/s41591-020-1034-x
+    title: Reporting guidelines for clinical trial reports for AI interventions CONSORT-AI
+    authors: [Xiaoxuan Liu, Samantha Cruz Rivera, David Moher]
+    year: 2020
+    source_type: guideline
+    venue: Nature Medicine
+    topics: [medical-ai, reporting-guidelines, safety]
+    methods: [reporting-guideline, human-factors]
+    stages: [experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41591-020-1034-x
+    license: publisher-open-page
+    notes: 适用于 AI 干预临床试验结果报告。
+  - source_id: src-f172310c052035c4
+    canonical: 10.1038/s41591-020-1037-7
+    title: Guidelines for clinical trial protocols for AI interventions SPIRIT-AI
+    authors: [Samantha Cruz Rivera, Xiaoxuan Liu, An-Wen Chan]
+    year: 2020
+    source_type: guideline
+    venue: Nature Medicine
+    topics: [medical-ai, reporting-guidelines, safety]
+    methods: [reporting-guideline, human-factors]
+    stages: [problem-definition, experiment-design, writing, review]
+    priority: core
+    verification: {metadata: verified, abstract: verified, fulltext: verified}
+    reviewed_at: 2026-08-12
+    status: active
+    superseded_by: ""
+    access_url: https://www.nature.com/articles/s41591-020-1037-7
+    license: publisher-open-page
+    notes: 适用于 AI 干预临床试验方案报告。

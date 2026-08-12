@@ -1,0 +1,17 @@
+schema_version: 1
+contexts:
+  - context: prediction-model
+    guideline_source_ids: [src-f3ba1ce9a4e3bf75, src-1edddd770a903a09]
+    notes: 临床预测模型开发/验证报告与偏倚评估。
+  - context: diagnostic-accuracy
+    guideline_source_ids: [src-6f9069bb04dddda8]
+    notes: 评价 AI index test 诊断准确性的研究。
+  - context: early-clinical-evaluation
+    guideline_source_ids: [src-b40f902b303c5e58]
+    notes: 早期、小规模、真实临床环境中的 AI 决策支持评价。
+  - context: medical-imaging
+    guideline_source_ids: [src-87fa2e6748d8dadb]
+    notes: 医学影像 AI 模型开发、验证与报告。
+  - context: general-medical-ai
+    guideline_source_ids: [src-4be118b1d4653631]
+    notes: 医疗 AI 全生命周期可信与部署原则。
