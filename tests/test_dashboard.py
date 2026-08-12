@@ -1,7 +1,10 @@
 import json
+import os
+import subprocess
 from datetime import date
 from pathlib import Path
 
+import pytest
 import yaml
 
 from research_os.cycle import advance_cycle, approve_active_cycle_idea
@@ -448,3 +451,52 @@ def test_action_commands_never_include_evidence_statements(tmp_path: Path) -> No
     assert source_id
     assert len(snapshot.actions) <= 3
     assert all(sentinel not in action.command for action in snapshot.actions)
+
+
+@pytest.mark.parametrize("filename", ["project.yaml", "02-evidence-ledger.yaml"])
+def test_dashboard_rejects_linked_direct_project_file(
+    tmp_path: Path, filename: str
+) -> None:
+    project = create_project(tmp_path, "Linked", "linked-project")
+    original = project / filename
+    outside = tmp_path / f"outside-{filename}"
+    outside.write_bytes(original.read_bytes())
+    original.unlink()
+    try:
+        original.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"当前环境不能创建文件符号链接: {exc}")
+
+    with pytest.raises(ValueError, match="符号链接|目录联接"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
+def test_dashboard_rejects_idea_directory_link(tmp_path: Path) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    advance_cycle(tmp_path, project.name)
+    ideas = project / "ideas"
+    outside = tmp_path / "outside-ideas"
+    ideas.rename(outside)
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(ideas), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            ideas.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不能创建目录链接: {exc}")
+
+    with pytest.raises(ValueError, match="符号链接|目录联接"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )

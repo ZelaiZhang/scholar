@@ -79,6 +79,55 @@ class ProjectDashboard:
     actions: tuple[DashboardAction, ...]
 
 
+def _safe_direct_file(
+    parent: Path,
+    name: str,
+    *,
+    required: bool,
+) -> Path | None:
+    if Path(name).name != name:
+        raise ValueError(f"不安全的内部文件名: {name}")
+    path = parent / name
+    if _is_link_or_reparse_point(path):
+        raise ValueError(f"课题文件不能是符号链接或目录联接: {path}")
+    if not path.exists():
+        if required:
+            raise FileNotFoundError(path)
+        return None
+    if not path.is_file() or path.resolve().parent != parent.resolve():
+        raise ValueError(f"课题文件必须是父目录内的普通文件: {path}")
+    return path
+
+
+def _safe_direct_directory(
+    parent: Path,
+    name: str,
+    *,
+    required: bool,
+) -> Path | None:
+    if Path(name).name != name:
+        raise ValueError(f"不安全的内部目录名: {name}")
+    path = parent / name
+    if _is_link_or_reparse_point(path):
+        raise ValueError(f"课题目录不能是符号链接或目录联接: {path}")
+    if not path.exists():
+        if required:
+            raise FileNotFoundError(path)
+        return None
+    if not path.is_dir() or path.resolve().parent != parent.resolve():
+        raise ValueError(f"课题目录必须是父目录内的真实目录: {path}")
+    return path
+
+
+def _preflight_project_inputs(project: Path) -> None:
+    _safe_direct_file(project, "project.yaml", required=False)
+    _safe_direct_file(project, "02-evidence-ledger.yaml", required=True)
+    _safe_direct_file(project, "knowledge-profile.yaml", required=False)
+    ideas = _safe_direct_directory(project, "ideas", required=False)
+    if ideas is not None:
+        _safe_direct_file(ideas, "archive.yaml", required=False)
+
+
 def _project_status(report: GuideReport) -> ProjectStatus:
     active_stage = next(
         (stage for stage in report.stages if stage.status != "已产出"),
@@ -165,7 +214,12 @@ def _idea_status(
     if not (project / "cycles").exists():
         return IdeaStatus("", "not_started", 0, (), False, 0, 0)
     _run_dir, manifest = load_active_cycle(workspace, slug)
-    archive_path = project / "ideas" / "archive.yaml"
+    ideas = _safe_direct_directory(project, "ideas", required=True)
+    if ideas is None:
+        raise FileNotFoundError(project / "ideas")
+    archive_path = _safe_direct_file(ideas, "archive.yaml", required=True)
+    if archive_path is None:
+        raise FileNotFoundError(ideas / "archive.yaml")
     archive = load_idea_archive(
         archive_path,
         allowed_source_ids=allowed_source_ids,
@@ -188,11 +242,13 @@ def _idea_status(
 
 
 def _profile_facts(project: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    path = project / "knowledge-profile.yaml"
-    if not path.exists():
+    path = _safe_direct_file(
+        project,
+        "knowledge-profile.yaml",
+        required=False,
+    )
+    if path is None:
         return (), ()
-    if _is_link_or_reparse_point(path):
-        raise ValueError(f"课题知识画像不能是符号链接或目录联接: {path}")
     profile = load_profile(path)
     return profile.domains, profile.tracks
 
@@ -259,6 +315,7 @@ def build_project_dashboard(
         raise TypeError("as_of must be a date")
     workspace = workspace.resolve()
     project = resolve_project_path(workspace, slug, require_exists=True)
+    _preflight_project_inputs(project)
     manifest = load_project_manifest(project, allow_legacy=True)
     library = resolve_workspace_directory(workspace, "library")
     registry = SourceRegistry(library / "sources.jsonl")
