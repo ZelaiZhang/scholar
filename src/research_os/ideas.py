@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from research_os.io import atomic_write_text
+from research_os.io import atomic_create_text, atomic_write_text
 
 
 IDEA_ID_PATTERN = re.compile(r"^idea-[0-9]{4}$")
@@ -342,7 +342,13 @@ def load_idea_archive(
     return archive
 
 
-def save_idea_archive(path: Path, archive: IdeaArchive) -> None:
+def save_idea_archive(
+    path: Path,
+    archive: IdeaArchive,
+    *,
+    overwrite: bool = True,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> None:
     _validate_archive(archive)
     payload = {
         "schema_version": archive.schema_version,
@@ -351,10 +357,15 @@ def save_idea_archive(path: Path, archive: IdeaArchive) -> None:
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata = path.parent.stat()
-    atomic_write_text(
+    writer = atomic_write_text if overwrite else atomic_create_text
+    writer(
         path,
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-        expected_parent_identity=(metadata.st_dev, metadata.st_ino),
+        expected_parent_identity=(
+            expected_parent_identity
+            if expected_parent_identity is not None
+            else (metadata.st_dev, metadata.st_ino)
+        ),
     )
 
 

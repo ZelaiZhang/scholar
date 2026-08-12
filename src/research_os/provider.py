@@ -23,6 +23,7 @@ class InvalidProviderResponse(RuntimeError):
 
 
 Transport = Callable[[str, dict[str, str], dict[str, object], float], dict[str, object]]
+MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,10 @@ def default_transport(
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
+            response_bytes = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+            if len(response_bytes) > MAX_PROVIDER_RESPONSE_BYTES:
+                raise InvalidProviderResponse("模型服务响应超过 1 MiB 安全上限")
+            raw = response_bytes.decode("utf-8", errors="strict")
     except HTTPError as exc:
         raise ProviderRequestError(
             f"模型服务返回 HTTP {exc.code}，请检查地址、模型名和账户状态"
@@ -58,6 +62,8 @@ def default_transport(
         raise ProviderRequestError(f"无法连接模型服务: {exc.reason}") from exc
     except TimeoutError as exc:
         raise ProviderRequestError(f"模型服务在 {timeout:g} 秒内未响应") from exc
+    except UnicodeDecodeError as exc:
+        raise InvalidProviderResponse("模型服务响应必须是 UTF-8") from exc
 
     try:
         decoded = json.loads(raw)
@@ -145,4 +151,3 @@ class OpenAICompatibleProvider:
         if isinstance(raw.get("model"), str):
             provenance["reported_model"] = raw["model"]
         return CompletionResult(content=content, provenance=provenance)
-

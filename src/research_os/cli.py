@@ -352,7 +352,7 @@ def _run(args: argparse.Namespace) -> int:
             reason=args.reason,
         )
         print(f"已由研究者批准 Idea: {args.idea}")
-        print(f"下一步: research-os cycle --project {args.project}")
+        print(f"下一步: research-os guide --project {args.project}")
         return 0
     if args.command == "new-project":
         path = create_project(args.workspace, args.title, args.slug)

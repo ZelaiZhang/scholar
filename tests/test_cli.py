@@ -17,7 +17,7 @@ from research_os.ideas import (
     load_idea_archive,
     save_idea_archive,
 )
-from research_os.cycle import advance_cycle
+from research_os.cycle import advance_cycle, load_cycle_manifest
 
 
 def test_cli_creates_project_and_registers_note(
@@ -286,6 +286,9 @@ def test_approve_idea_cli_is_human_only_and_records_decision(
     assert selected.status == "selected"
     assert selected.researcher_decision is not None
     assert selected.researcher_decision.actor == "researcher"
+    assert load_cycle_manifest(
+        project / "cycles" / created.run_id / "manifest.yaml"
+    ).state == "completed"
     assert (project / "research-journal.jsonl").is_file()
 
 

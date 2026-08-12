@@ -67,6 +67,38 @@ def test_external_context_requires_current_verified_project_sources(
         )
 
 
+def test_external_context_rejects_ledger_claims_from_unlinked_sources(
+    tmp_path: Path,
+) -> None:
+    project, run_dir, _source_id = _workspace(tmp_path, external_allowed=True)
+    (project / "02-evidence-ledger.yaml").write_text(
+        """schema_version: 1
+claims:
+  - claim_id: claim-001
+    statement: This text must never leave the project.
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-from-another-project
+        locator: p. 1
+    opposition: []
+    limitations: Cross-project evidence is not authorized.
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PermissionError, match="ledger|source|claim"):
+        build_external_context(
+            tmp_path,
+            "topic-a",
+            run_dir=run_dir,
+            allow_external_api=True,
+        )
+
+    assert not (run_dir / "context.md").exists()
+
+
 def test_external_context_is_exactly_hashed_and_registered(
     tmp_path: Path,
 ) -> None:
@@ -134,3 +166,32 @@ def test_context_cannot_use_a_run_directory_from_another_project(
             run_dir=foreign_run,
             allow_external_api=True,
         )
+
+
+def test_changed_context_is_versioned_without_overwriting_prior_snapshot(
+    tmp_path: Path,
+) -> None:
+    project, run_dir, _source_id = _workspace(tmp_path, external_allowed=True)
+    first = build_external_context(
+        tmp_path,
+        "topic-a",
+        run_dir=run_dir,
+        allow_external_api=True,
+    )
+    first_bytes = first.path.read_bytes()
+    (project / "00-research-brief.md").write_text(
+        "# Topic A\n\nA newly documented public research constraint.\n",
+        encoding="utf-8",
+    )
+
+    second = build_external_context(
+        tmp_path,
+        "topic-a",
+        run_dir=run_dir,
+        allow_external_api=True,
+    )
+
+    assert second.sha256 != first.sha256
+    assert second.path != first.path
+    assert first.path.read_bytes() == first_bytes
+    assert second.path.read_bytes() == second.content.encode("utf-8")

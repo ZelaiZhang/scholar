@@ -113,7 +113,13 @@ def validate_journal(path: Path, *, project_root: Path) -> tuple[str, ...]:
             issues.append(f"研究日志第 {line_number} 行产物路径无效")
         else:
             try:
-                (root / artifact_path).resolve().relative_to(root)
+                artifact = (root / artifact_path).resolve()
+                artifact.relative_to(root)
+                if not artifact.is_file():
+                    issues.append(
+                        f"research journal line {line_number} artifact is missing: "
+                        f"{artifact_path}"
+                    )
             except (OSError, ValueError):
                 issues.append(
                     f"研究日志第 {line_number} 行产物路径越出课题目录"
@@ -122,6 +128,13 @@ def validate_journal(path: Path, *, project_root: Path) -> tuple[str, ...]:
             value = row.get(field)
             if not isinstance(value, str) or not value.strip():
                 issues.append(f"研究日志第 {line_number} 行 {field} 无效")
+        run_id = row.get("run_id")
+        if isinstance(run_id, str) and run_id.strip():
+            if not (root / "cycles" / run_id).is_dir():
+                issues.append(
+                    f"research journal line {line_number} references a missing run: "
+                    f"{run_id}"
+                )
         previous = stored_hash if isinstance(stored_hash, str) else ""
     return tuple(issues)
 

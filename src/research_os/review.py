@@ -162,6 +162,7 @@ def load_independent_review(
     *,
     expected_role: str,
     expected_idea_ids: set[str],
+    expected_run_id: str,
 ) -> IndependentReview:
     if expected_role not in REVIEW_ROLES:
         raise ValueError(f"unknown expected review role: {expected_role}")
@@ -186,16 +187,21 @@ def load_independent_review(
             f"missing {sorted(expected_idea_ids - set(actual_ids))}, "
             f"unknown {sorted(set(actual_ids) - expected_idea_ids)}"
         )
+    run_id = _require_string(raw["run_id"], context="run_id")
+    if run_id != expected_run_id:
+        raise ValueError(
+            f"review run_id mismatch: expected {expected_run_id}, found {run_id}"
+        )
     return IndependentReview(
         schema_version=1,
-        run_id=_require_string(raw["run_id"], context="run_id"),
+        run_id=run_id,
         role=role,
         assessments=assessments,
     )
 
 
 def load_review_bundle(
-    folder: Path, *, expected_idea_ids: set[str]
+    folder: Path, *, expected_idea_ids: set[str], expected_run_id: str
 ) -> ReviewBundle:
     reviews: dict[str, IndependentReview] = {}
     for role in REVIEW_ROLES:
@@ -206,6 +212,7 @@ def load_review_bundle(
             path,
             expected_role=role,
             expected_idea_ids=expected_idea_ids,
+            expected_run_id=expected_run_id,
         )
     run_ids = {review.run_id for review in reviews.values()}
     if len(run_ids) != 1:

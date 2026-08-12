@@ -1,5 +1,6 @@
 import os
 import subprocess
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from research_os.doctor import EXPECTED_SKILLS, run_doctor
 from research_os.project import create_project, link_project_sources
 from research_os.cycle import advance_cycle
+from research_os.journal import append_event
 
 
 def make_healthy_workspace(path: Path) -> None:
@@ -225,6 +227,55 @@ def test_doctor_checks_corrupt_inactive_cycle_manifest(
     projects = next(item for item in report.items if item.name == "projects")
     assert projects.level == "fail"
     assert first.run_id in projects.message
+
+
+def test_doctor_rejects_completed_cycle_without_frozen_artifacts(
+    tmp_path: Path,
+) -> None:
+    make_healthy_workspace(tmp_path)
+    project = create_project(tmp_path, "A", "topic-a")
+    created = advance_cycle(tmp_path, "topic-a")
+    manifest = project / "cycles" / created.run_id / "manifest.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "state: candidate_generation", "state: completed"
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    projects = next(item for item in report.items if item.name == "projects")
+    assert projects.level == "fail"
+    assert "candidate_sha256" in projects.message or "cycle" in projects.message
+
+
+def test_doctor_rejects_validly_hashed_journal_event_for_missing_run(
+    tmp_path: Path,
+) -> None:
+    make_healthy_workspace(tmp_path)
+    project = create_project(tmp_path, "A", "topic-a")
+    advance_cycle(tmp_path, "topic-a")
+    artifact = project / "project.yaml"
+    append_event(
+        project / "research-journal.jsonl",
+        event_type="fabricated_event",
+        run_id="run-does-not-exist",
+        actor="system",
+        artifact_path="project.yaml",
+        artifact_hash=hashlib.sha256(artifact.read_bytes()).hexdigest(),
+        summary="Structurally valid but refers to no run.",
+    )
+
+    report = run_doctor(
+        tmp_path, stdout_encoding="utf-8", python_version=(3, 11, 0)
+    )
+
+    projects = next(item for item in report.items if item.name == "projects")
+    assert projects.level == "fail"
+    assert "missing run" in projects.message or "journal" in projects.message
 
 
 def test_doctor_detects_tampered_research_journal(tmp_path: Path) -> None:

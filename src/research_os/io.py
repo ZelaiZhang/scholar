@@ -61,3 +61,31 @@ def atomic_write_bytes(
     except BaseException:
         temporary_path.unlink(missing_ok=True)
         raise
+
+
+def atomic_create_text(
+    path: Path,
+    content: str,
+    *,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> None:
+    """Atomically create UTF-8 text and fail if the destination already exists."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_parent_identity(path, expected_parent_identity)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+        _assert_parent_identity(path, expected_parent_identity)
+        # A hard-link creates the destination atomically but never replaces it.
+        os.link(temporary_path, path)
+        _assert_parent_identity(path, expected_parent_identity)
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"destination appeared during provider work; refusing to overwrite: {path}"
+        ) from exc
+    finally:
+        temporary_path.unlink(missing_ok=True)

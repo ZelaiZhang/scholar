@@ -4,6 +4,9 @@ Project: `{{PROJECT_SLUG}}`
 Idea limit: {{MAX_IDEAS}}  
 Provider-call limit: {{MAX_CALLS}}
 
+Reserved Idea IDs: {{RESERVED_IDEA_IDS}}
+Suggested first ID: {{SUGGESTED_IDEA_ID}}
+
 This run is guidance-only. Do not execute training, evaluation, shell experiment,
 or clinical actions. Do not store hidden reasoning or chain-of-thought. Record only
 concise conclusions, evidence locators, uncertainties, and reproducible search terms.

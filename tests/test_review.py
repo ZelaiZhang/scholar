@@ -77,6 +77,7 @@ def test_independent_review_round_trip_requires_exact_candidate_set(
         path,
         expected_role="novelty",
         expected_idea_ids=IDEA_IDS,
+        expected_run_id="run-a",
     )
 
     assert review.run_id == "run-a"
@@ -91,6 +92,7 @@ def test_independent_review_round_trip_requires_exact_candidate_set(
             path,
             expected_role="novelty",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
 
@@ -108,6 +110,7 @@ def test_review_rejects_unknown_role_duplicate_ideas_and_invalid_values(
             path,
             expected_role="novelty",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     payload["role"] = "novelty"
@@ -118,6 +121,7 @@ def test_review_rejects_unknown_role_duplicate_ideas_and_invalid_values(
             path,
             expected_role="novelty",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     payload["assessments"][1]["idea_id"] = "idea-0002"
@@ -128,6 +132,7 @@ def test_review_rejects_unknown_role_duplicate_ideas_and_invalid_values(
             path,
             expected_role="novelty",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     payload["assessments"][0]["recommendation"] = "advance"
@@ -138,6 +143,7 @@ def test_review_rejects_unknown_role_duplicate_ideas_and_invalid_values(
             path,
             expected_role="novelty",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
 
@@ -154,6 +160,7 @@ def test_review_rejects_extra_fields_invalid_json_utf8_and_oversize(
             path,
             expected_role="methods",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     path.write_text("{not-json", encoding="utf-8")
@@ -162,6 +169,7 @@ def test_review_rejects_extra_fields_invalid_json_utf8_and_oversize(
             path,
             expected_role="methods",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     path.write_bytes(b"\xff")
@@ -170,6 +178,7 @@ def test_review_rejects_extra_fields_invalid_json_utf8_and_oversize(
             path,
             expected_role="methods",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
     path.write_bytes(b" " * (1024 * 1024 + 1))
@@ -178,15 +187,18 @@ def test_review_rejects_extra_fields_invalid_json_utf8_and_oversize(
             path,
             expected_role="methods",
             expected_idea_ids=IDEA_IDS,
+            expected_run_id="run-a",
         )
 
 
-def test_review_bundle_requires_all_roles_and_one_run(tmp_path: Path) -> None:
+def test_review_bundle_requires_all_roles_and_current_run(tmp_path: Path) -> None:
     _write_review(tmp_path / "novelty.json", role="novelty")
     _write_review(tmp_path / "methods.json", role="methods")
 
     with pytest.raises(ValueError, match="medical-safety"):
-        load_review_bundle(tmp_path, expected_idea_ids=IDEA_IDS)
+        load_review_bundle(
+            tmp_path, expected_idea_ids=IDEA_IDS, expected_run_id="run-a"
+        )
 
     _write_review(
         tmp_path / "medical-safety.json",
@@ -194,13 +206,17 @@ def test_review_bundle_requires_all_roles_and_one_run(tmp_path: Path) -> None:
         run_id="run-other",
     )
     with pytest.raises(ValueError, match="run_id"):
-        load_review_bundle(tmp_path, expected_idea_ids=IDEA_IDS)
+        load_review_bundle(
+            tmp_path, expected_idea_ids=IDEA_IDS, expected_run_id="run-a"
+        )
 
 
 def test_meta_review_is_bound_to_bundle_and_cannot_select(tmp_path: Path) -> None:
     reviews = tmp_path / "reviews"
     _write_bundle(reviews)
-    bundle = load_review_bundle(reviews, expected_idea_ids=IDEA_IDS)
+    bundle = load_review_bundle(
+        reviews, expected_idea_ids=IDEA_IDS, expected_run_id="run-a"
+    )
     meta_path = tmp_path / "meta-review.json"
     _write_meta(meta_path)
 

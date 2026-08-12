@@ -1,4 +1,5 @@
 import json
+import research_os.provider as provider_module
 
 import pytest
 
@@ -72,3 +73,27 @@ def test_provider_rejects_malformed_response(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(InvalidProviderResponse):
         provider.complete("system", "user", external_api_allowed=True)
+
+
+def test_default_transport_caps_http_response_before_full_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class OversizedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, limit: int) -> bytes:
+            assert limit == provider_module.MAX_PROVIDER_RESPONSE_BYTES + 1
+            return b"x" * limit
+
+    monkeypatch.setattr(
+        provider_module, "urlopen", lambda *_args, **_kwargs: OversizedResponse()
+    )
+
+    with pytest.raises(InvalidProviderResponse, match="1 MiB"):
+        provider_module.default_transport(
+            "https://provider.test/chat/completions", {}, {}, 1.0
+        )

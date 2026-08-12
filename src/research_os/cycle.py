@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from importlib import resources
@@ -19,8 +21,8 @@ from research_os.ideas import (
     load_idea_archive,
     save_idea_archive,
 )
-from research_os.io import atomic_write_bytes, atomic_write_text
-from research_os.journal import append_event
+from research_os.io import atomic_create_text, atomic_write_bytes, atomic_write_text
+from research_os.journal import append_event, validate_journal
 from research_os.project import (
     _is_link_or_reparse_point,
     load_project_manifest,
@@ -109,6 +111,13 @@ def _directory_identity(path: Path) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino
 
 
+def _assert_directory_identity(
+    path: Path, expected: tuple[int, int], *, context: str
+) -> None:
+    if _directory_identity(path) != expected:
+        raise OSError(f"{context} directory was replaced or changed: {path}")
+
+
 def _direct_directory(parent: Path, name: str, *, create: bool) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", name):
         raise ValueError(f"unsafe internal directory name: {name}")
@@ -140,9 +149,14 @@ def _sha256_text(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _write_json(path: Path, payload: dict[str, object]) -> None:
+def _write_json(
+    path: Path,
+    payload: dict[str, object],
+    *,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    identity = _directory_identity(path.parent)
+    identity = expected_parent_identity or _directory_identity(path.parent)
     atomic_write_text(
         path,
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -168,9 +182,14 @@ def _manifest_payload(manifest: CycleManifest) -> dict[str, object]:
     }
 
 
-def save_cycle_manifest(path: Path, manifest: CycleManifest) -> None:
+def save_cycle_manifest(
+    path: Path,
+    manifest: CycleManifest,
+    *,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> None:
     _validate_manifest(manifest, expected_run_id=path.parent.name)
-    identity = _directory_identity(path.parent)
+    identity = expected_parent_identity or _directory_identity(path.parent)
     atomic_write_text(
         path,
         yaml.safe_dump(_manifest_payload(manifest), allow_unicode=True, sort_keys=False),
@@ -212,6 +231,23 @@ def _validate_manifest(
         raise ValueError("cycle manifest calls_used is invalid")
     for field in ("candidate_sha256", "reviews_sha256", "meta_review_sha256"):
         _validate_hash(getattr(manifest, field), field=field)
+    state_rank = {
+        "candidate_generation": 0,
+        "novelty_check": 1,
+        "independent_review": 2,
+        "meta_review": 3,
+        "awaiting_human_decision": 4,
+        "completed": 5,
+    }[manifest.state]
+    for minimum_rank, field in (
+        (1, "candidate_sha256"),
+        (3, "reviews_sha256"),
+        (4, "meta_review_sha256"),
+    ):
+        if state_rank >= minimum_rank and not getattr(manifest, field):
+            raise ValueError(
+                f"cycle manifest state {manifest.state} requires {field}"
+            )
     for field in ("project_slug", "created_at", "updated_at"):
         _required_string(getattr(manifest, field), field=field)
 
@@ -260,11 +296,24 @@ def _write_work_packet(project: Path, run_dir: Path, manifest: CycleManifest) ->
         .joinpath("cycle-work-packet.md")
         .read_text(encoding="utf-8")
     )
+    archive = load_idea_archive(project / "ideas" / "archive.yaml")
+    reserved_ids = tuple(idea.idea_id for idea in archive.ideas)
+    used_numbers = {
+        int(idea_id.split("-", 1)[1]) for idea_id in reserved_ids
+    }
+    next_number = next(
+        number for number in range(1, 10000) if number not in used_numbers
+    )
     content = (
         template.replace("{{PROJECT_SLUG}}", manifest.project_slug)
         .replace("{{RUN_ID}}", manifest.run_id)
         .replace("{{MAX_IDEAS}}", str(manifest.max_ideas))
         .replace("{{MAX_CALLS}}", str(manifest.max_calls))
+        .replace(
+            "{{RESERVED_IDEA_IDS}}",
+            ", ".join(reserved_ids) if reserved_ids else "(none)",
+        )
+        .replace("{{SUGGESTED_IDEA_ID}}", f"idea-{next_number:04d}")
     )
     path = run_dir / "work-packet.md"
     atomic_write_text(path, content, expected_parent_identity=_directory_identity(run_dir))
@@ -300,6 +349,32 @@ def _provider_public_metadata(provider: object) -> dict[str, object]:
     return metadata
 
 
+@contextmanager
+def _provider_budget_lock(
+    run_dir: Path, expected_run_identity: tuple[int, int]
+):
+    """Serialize the durable reservation of a provider-call budget slot."""
+    _assert_directory_identity(
+        run_dir, expected_run_identity, context="cycle run before budget reservation"
+    )
+    lock_path = run_dir / ".provider-budget.lock"
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise RuntimeError(
+            "another cycle process is reserving the provider budget; retry after it finishes"
+        ) from exc
+    try:
+        os.write(descriptor, str(os.getpid()).encode("ascii"))
+        os.close(descriptor)
+        yield
+    finally:
+        _assert_directory_identity(
+            run_dir, expected_run_identity, context="cycle run during budget reservation"
+        )
+        lock_path.unlink(missing_ok=True)
+
+
 def _begin_provider_call(
     project: Path,
     run_dir: Path,
@@ -310,43 +385,55 @@ def _begin_provider_call(
     stage: str,
     system_prompt: str,
     user_prompt: str,
+    expected_run_identity: tuple[int, int],
 ) -> tuple[CycleManifest, int]:
-    if manifest.calls_used >= manifest.max_calls:
-        raise RuntimeError("provider call budget is exhausted")
-    call_number = manifest.calls_used + 1
-    updated = replace(
-        manifest,
-        calls_used=call_number,
-        updated_at=_utc_now(),
-        last_error="",
-    )
-    save_cycle_manifest(run_dir / "manifest.yaml", updated)
-    provenance_dir = _direct_directory(run_dir, "provenance", create=True)
-    started = provenance_dir / f"call-{call_number:03d}-started.json"
-    _write_json(
-        started,
-        {
-            "schema_version": 1,
-            "run_id": manifest.run_id,
-            "call_number": call_number,
-            "stage": stage,
-            "status": "started",
-            "started_at": _utc_now(),
-            "provider": _provider_public_metadata(provider),
-            "context_sha256": context.sha256,
-            "context_source_id": context.context_source_id,
-            "input_source_ids": list(context.input_source_ids),
-            "system_prompt_sha256": _sha256_text(system_prompt),
-            "user_prompt_sha256": _sha256_text(user_prompt),
-        },
-    )
-    _record(
-        project,
-        event_type="provider_call_started",
-        run_id=manifest.run_id,
-        artifact=started,
-        summary=f"Reserved provider call {call_number} for {stage} before dispatch.",
-    )
+    with _provider_budget_lock(run_dir, expected_run_identity):
+        current = load_cycle_manifest(run_dir / "manifest.yaml")
+        if current != manifest:
+            raise RuntimeError(
+                "cycle manifest changed concurrently; reload before provider dispatch"
+            )
+        if current.calls_used >= current.max_calls:
+            raise RuntimeError("provider call budget is exhausted")
+        call_number = current.calls_used + 1
+        updated = replace(
+            current,
+            calls_used=call_number,
+            updated_at=_utc_now(),
+            last_error="",
+        )
+        save_cycle_manifest(
+            run_dir / "manifest.yaml",
+            updated,
+            expected_parent_identity=expected_run_identity,
+        )
+        provenance_dir = _direct_directory(run_dir, "provenance", create=True)
+        started = provenance_dir / f"call-{call_number:03d}-started.json"
+        _write_json(
+            started,
+            {
+                "schema_version": 1,
+                "run_id": current.run_id,
+                "call_number": call_number,
+                "stage": stage,
+                "status": "started",
+                "started_at": _utc_now(),
+                "provider": _provider_public_metadata(provider),
+                "context_sha256": context.sha256,
+                "context_source_id": context.context_source_id,
+                "input_source_ids": list(context.input_source_ids),
+                "system_prompt_sha256": _sha256_text(system_prompt),
+                "user_prompt_sha256": _sha256_text(user_prompt),
+            },
+            expected_parent_identity=_directory_identity(provenance_dir),
+        )
+        _record(
+            project,
+            event_type="provider_call_started",
+            run_id=current.run_id,
+            artifact=started,
+            summary=f"Reserved provider call {call_number} for {stage} before dispatch.",
+        )
     return updated, call_number
 
 
@@ -361,7 +448,11 @@ def _finish_provider_call(
     response_content: str | None,
     provider_provenance: dict[str, object] | None,
     error_type: str = "",
+    expected_run_identity: tuple[int, int],
 ) -> Path:
+    _assert_directory_identity(
+        run_dir, expected_run_identity, context="cycle run after provider dispatch"
+    )
     provenance_dir = _direct_directory(run_dir, "provenance", create=True)
     finished = provenance_dir / f"call-{call_number:03d}-finished.json"
     response_hash = _sha256_text(response_content) if response_content is not None else ""
@@ -433,6 +524,7 @@ def _dispatch_provider(
     stage: str,
     system_prompt: str,
     user_prompt: str,
+    expected_run_identity: tuple[int, int],
 ) -> tuple[CycleManifest, int, object | None, str | None]:
     updated, call_number = _begin_provider_call(
         project,
@@ -443,6 +535,7 @@ def _dispatch_provider(
         stage=stage,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
+        expected_run_identity=expected_run_identity,
     )
     try:
         complete = getattr(provider, "complete")
@@ -460,6 +553,13 @@ def _dispatch_provider(
         if not isinstance(provenance, dict):
             raise ValueError("provider provenance must be an object")
     except Exception as exc:
+        # If the run was replaced while the network call was in flight, fail closed.
+        # In particular, do not write even an error provenance record into the new path.
+        _assert_directory_identity(
+            run_dir,
+            expected_run_identity,
+            context="cycle run during provider dispatch",
+        )
         _finish_provider_call(
             project,
             run_dir,
@@ -470,8 +570,14 @@ def _dispatch_provider(
             response_content=None,
             provider_provenance=None,
             error_type=type(exc).__name__,
+            expected_run_identity=expected_run_identity,
         )
         return updated, call_number, None, f"provider call failed: {type(exc).__name__}"
+    _assert_directory_identity(
+        run_dir,
+        expected_run_identity,
+        context="cycle run during provider dispatch",
+    )
     return updated, call_number, result, None
 
 
@@ -485,6 +591,7 @@ def _mark_provider_output(
     result: object,
     status: str,
     error_type: str = "",
+    expected_run_identity: tuple[int, int],
 ) -> None:
     _finish_provider_call(
         project,
@@ -496,6 +603,7 @@ def _mark_provider_output(
         response_content=getattr(result, "content"),
         provider_provenance=getattr(result, "provenance"),
         error_type=error_type,
+        expected_run_identity=expected_run_identity,
     )
 
 
@@ -518,12 +626,22 @@ def _commit_provider_candidates(
     source_ids: set[str],
     call_number: int,
     provider_provenance: dict[str, object],
+    reserved_idea_ids: set[str],
+    expected_run_identity: tuple[int, int],
 ) -> None:
     temporary = _temporary_response(run_dir, content, suffix=".json")
     try:
         candidates = _load_candidates(
             temporary, manifest=manifest, source_ids=source_ids
         )
+        collisions = sorted(
+            {idea.idea_id for idea in candidates.ideas} & reserved_idea_ids
+        )
+        if collisions:
+            raise ValueError(
+                "Idea ID already belongs to another run: "
+                + ", ".join(collisions)
+            )
         clean_provenance = _sanitize_provider_provenance(provider_provenance)
         generated = IdeaArchive(
             1,
@@ -540,7 +658,12 @@ def _commit_provider_candidates(
                 for idea in candidates.ideas
             ),
         )
-        save_idea_archive(target, generated)
+        save_idea_archive(
+            target,
+            generated,
+            overwrite=False,
+            expected_parent_identity=expected_run_identity,
+        )
         _load_candidates(target, manifest=manifest, source_ids=source_ids)
     finally:
         temporary.unlink(missing_ok=True)
@@ -553,6 +676,7 @@ def _commit_provider_review(
     *,
     role: str,
     candidate_ids: set[str],
+    expected_reviews_identity: tuple[int, int],
 ) -> None:
     temporary = _temporary_response(run_dir, content, suffix=".json")
     try:
@@ -560,12 +684,13 @@ def _commit_provider_review(
             temporary,
             expected_role=role,
             expected_idea_ids=candidate_ids,
+            expected_run_id=run_dir.name,
         )
         target.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(
+        atomic_create_text(
             target,
             content.rstrip() + "\n",
-            expected_parent_identity=_directory_identity(target.parent),
+            expected_parent_identity=expected_reviews_identity,
         )
     finally:
         temporary.unlink(missing_ok=True)
@@ -578,6 +703,7 @@ def _commit_provider_meta_review(
     *,
     candidate_ids: set[str],
     run_id: str,
+    expected_run_identity: tuple[int, int],
 ) -> None:
     temporary = _temporary_response(run_dir, content, suffix=".json")
     try:
@@ -586,10 +712,10 @@ def _commit_provider_meta_review(
             expected_idea_ids=candidate_ids,
             expected_run_id=run_id,
         )
-        atomic_write_text(
+        atomic_create_text(
             target,
             content.rstrip() + "\n",
-            expected_parent_identity=_directory_identity(target.parent),
+            expected_parent_identity=expected_run_identity,
         )
     finally:
         temporary.unlink(missing_ok=True)
@@ -704,7 +830,11 @@ def approve_active_cycle_idea(
         candidates_path, manifest=manifest, source_ids=source_ids
     )
     candidate_ids = {idea.idea_id for idea in candidates.ideas}
-    load_review_bundle(reviews_dir, expected_idea_ids=candidate_ids)
+    load_review_bundle(
+        reviews_dir,
+        expected_idea_ids=candidate_ids,
+        expected_run_id=manifest.run_id,
+    )
     meta = load_meta_review(
         meta_path,
         expected_idea_ids=candidate_ids,
@@ -730,21 +860,43 @@ def approve_active_cycle_idea(
     approved = approve_idea(archive, idea_id, reason=reason)
     snapshot = archive_path.read_bytes()
     archive_identity = _directory_identity(archive_path.parent)
+    manifest_path = run_dir / "manifest.yaml"
+    manifest_snapshot = manifest_path.read_bytes()
+    run_identity = _directory_identity(run_dir)
     save_idea_archive(archive_path, approved)
     approved_record = next(idea for idea in approved.ideas if idea.idea_id == idea_id)
     try:
+        completed = replace(
+            manifest,
+            state="completed",
+            updated_at=_utc_now(),
+            last_error="",
+        )
+        save_cycle_manifest(
+            manifest_path,
+            completed,
+            expected_parent_identity=run_identity,
+        )
         _record(
             project,
             event_type="idea_approved",
             run_id=manifest.run_id,
             artifact=archive_path,
-            summary=f"Researcher approved {idea_id}: {reason.strip()}",
+            summary=(
+                f"Researcher approved {idea_id} and completed the supervised run: "
+                f"{reason.strip()}"
+            ),
         )
     except BaseException:
         atomic_write_bytes(
             archive_path,
             snapshot,
             expected_parent_identity=archive_identity,
+        )
+        atomic_write_bytes(
+            manifest_path,
+            manifest_snapshot,
+            expected_parent_identity=run_identity,
         )
         raise
     return approved_record
@@ -831,14 +983,28 @@ def _transition(
         **changes,
     )
     manifest_path = run_dir / "manifest.yaml"
-    save_cycle_manifest(manifest_path, updated)
-    _record(
-        project,
-        event_type="state_transition",
-        run_id=manifest.run_id,
-        artifact=manifest_path,
-        summary=f"Advanced research cycle from {manifest.state} to {new_state}.",
+    snapshot = manifest_path.read_bytes()
+    manifest_identity = _directory_identity(run_dir)
+    save_cycle_manifest(
+        manifest_path,
+        updated,
+        expected_parent_identity=manifest_identity,
     )
+    try:
+        _record(
+            project,
+            event_type="state_transition",
+            run_id=manifest.run_id,
+            artifact=manifest_path,
+            summary=f"Advanced research cycle from {manifest.state} to {new_state}.",
+        )
+    except BaseException:
+        atomic_write_bytes(
+            manifest_path,
+            snapshot,
+            expected_parent_identity=manifest_identity,
+        )
+        raise
     return updated
 
 
@@ -881,6 +1047,72 @@ def _reviews_digest(folder: Path) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
+def validate_cycle_artifacts(
+    run_dir: Path,
+    manifest: CycleManifest,
+    *,
+    source_ids: set[str],
+    archive_path: Path,
+) -> tuple[str, ...]:
+    """Validate state-bound cycle artifacts without changing the run."""
+    issues: list[str] = []
+    candidate_ids: set[str] = set()
+    candidates_path = run_dir / "candidates.yaml"
+    if manifest.candidate_sha256:
+        try:
+            if _sha256_file(candidates_path) != manifest.candidate_sha256:
+                raise ValueError("candidate hash does not match manifest")
+            candidates = _load_candidates(
+                candidates_path, manifest=manifest, source_ids=source_ids
+            )
+            candidate_ids = {idea.idea_id for idea in candidates.ideas}
+        except (OSError, UnicodeError, ValueError) as exc:
+            issues.append(f"candidates: {exc}")
+    if manifest.reviews_sha256:
+        try:
+            reviews_dir = run_dir / "reviews"
+            if _reviews_digest(reviews_dir) != manifest.reviews_sha256:
+                raise ValueError("review bundle hash does not match manifest")
+            if candidate_ids:
+                load_review_bundle(
+                    reviews_dir,
+                    expected_idea_ids=candidate_ids,
+                    expected_run_id=manifest.run_id,
+                )
+        except (OSError, UnicodeError, ValueError) as exc:
+            issues.append(f"reviews: {exc}")
+    if manifest.meta_review_sha256:
+        try:
+            meta_path = run_dir / "meta-review.json"
+            if _sha256_file(meta_path) != manifest.meta_review_sha256:
+                raise ValueError("meta-review hash does not match manifest")
+            if candidate_ids:
+                load_meta_review(
+                    meta_path,
+                    expected_idea_ids=candidate_ids,
+                    expected_run_id=manifest.run_id,
+                )
+        except (OSError, UnicodeError, ValueError) as exc:
+            issues.append(f"meta-review: {exc}")
+    if manifest.state == "completed":
+        try:
+            archive = load_idea_archive(
+                archive_path, allowed_source_ids=source_ids
+            )
+            selected = [
+                idea
+                for idea in archive.ideas
+                if idea.generated_by_run == manifest.run_id and idea.status == "selected"
+            ]
+            if len(selected) != 1:
+                raise ValueError(
+                    "completed run must have exactly one researcher-selected Idea"
+                )
+        except (OSError, UnicodeError, ValueError) as exc:
+            issues.append(f"approval: {exc}")
+    return tuple(issues)
+
+
 def _novelty_complete(idea: IdeaRecord) -> bool:
     return (
         idea.novelty.status == "checked"
@@ -908,6 +1140,16 @@ def advance_cycle(
     )
     project = resolve_project_path(workspace, slug, require_exists=True)
     project_manifest = load_project_manifest(project)
+    journal_path = project / "research-journal.jsonl"
+    if journal_path.exists():
+        journal_issues = validate_journal(journal_path, project_root=project)
+        if journal_issues:
+            raise ValueError(
+                "research journal is corrupt; cycle resume is blocked: "
+                + "; ".join(journal_issues)
+            )
+    elif (project / "cycles").exists():
+        raise ValueError("research journal is missing; cycle resume is blocked")
     source_ids = set(project_manifest.source_ids)
     archive_path = _ensure_archive(project, slug, source_ids)
     cycles_path = project / "cycles"
@@ -924,6 +1166,7 @@ def advance_cycle(
             raise ValueError("max_ideas cannot change while resuming a run")
         if max_calls is not None and requested_max_calls != manifest.max_calls:
             raise ValueError("max_calls cannot change while resuming a run")
+    run_identity = _directory_identity(run_dir)
 
     candidates_path = run_dir / "candidates.yaml"
     reviews_dir = run_dir / "reviews"
@@ -972,6 +1215,7 @@ def advance_cycle(
                 stage="candidate_generation",
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
+                expected_run_identity=run_identity,
             )
             if error is not None or result is None:
                 return _blocked(
@@ -989,6 +1233,13 @@ def advance_cycle(
                     source_ids=source_ids,
                     call_number=call_number,
                     provider_provenance=result.provenance,
+                    reserved_idea_ids={
+                        idea.idea_id
+                        for idea in load_idea_archive(
+                            archive_path, allowed_source_ids=source_ids
+                        ).ideas
+                    },
+                    expected_run_identity=run_identity,
                 )
             except (OSError, UnicodeError, ValueError) as exc:
                 _mark_provider_output(
@@ -1000,6 +1251,7 @@ def advance_cycle(
                     result=result,
                     status="invalid_output",
                     error_type=type(exc).__name__,
+                    expected_run_identity=run_identity,
                 )
                 return _blocked(
                     manifest,
@@ -1015,10 +1267,16 @@ def advance_cycle(
                 stage="candidate_generation",
                 result=result,
                 status="committed",
+                expected_run_identity=run_identity,
             )
+        archive_snapshot = archive_path.read_bytes()
+        archive_identity = _directory_identity(archive_path.parent)
         try:
             candidates = _load_candidates(
                 candidates_path, manifest=manifest, source_ids=source_ids
+            )
+            _assert_directory_identity(
+                run_dir, run_identity, context="cycle run"
             )
             _synchronize_archive(
                 archive_path,
@@ -1033,18 +1291,29 @@ def advance_cycle(
                 target=candidates_path,
                 reason=str(exc),
             )
-        manifest = _transition(
-            project,
-            run_dir,
-            manifest,
-            "novelty_check",
-            candidate_sha256=_sha256_file(candidates_path),
-        )
+        try:
+            manifest = _transition(
+                project,
+                run_dir,
+                manifest,
+                "novelty_check",
+                candidate_sha256=_sha256_file(candidates_path),
+            )
+        except BaseException:
+            atomic_write_bytes(
+                archive_path,
+                archive_snapshot,
+                expected_parent_identity=archive_identity,
+            )
+            raise
 
     if manifest.state == "novelty_check":
         try:
             candidates = _load_candidates(
                 candidates_path, manifest=manifest, source_ids=source_ids
+            )
+            _assert_directory_identity(
+                run_dir, run_identity, context="cycle run"
             )
         except (OSError, UnicodeError, ValueError) as exc:
             return _blocked(
@@ -1060,6 +1329,8 @@ def advance_cycle(
                 target=candidates_path,
                 reason="Every Idea needs reproducible queries, a registered neighbour, and a concrete difference.",
             )
+        archive_snapshot = archive_path.read_bytes()
+        archive_identity = _directory_identity(archive_path.parent)
         try:
             _synchronize_archive(
                 archive_path,
@@ -1074,13 +1345,21 @@ def advance_cycle(
                 target=archive_path,
                 reason=str(exc),
             )
-        manifest = _transition(
-            project,
-            run_dir,
-            manifest,
-            "independent_review",
-            candidate_sha256=_sha256_file(candidates_path),
-        )
+        try:
+            manifest = _transition(
+                project,
+                run_dir,
+                manifest,
+                "independent_review",
+                candidate_sha256=_sha256_file(candidates_path),
+            )
+        except BaseException:
+            atomic_write_bytes(
+                archive_path,
+                archive_snapshot,
+                expected_parent_identity=archive_identity,
+            )
+            raise
 
     if manifest.state in {
         "independent_review",
@@ -1098,6 +1377,9 @@ def advance_cycle(
         try:
             candidates = _load_candidates(
                 candidates_path, manifest=manifest, source_ids=source_ids
+            )
+            _assert_directory_identity(
+                run_dir, run_identity, context="cycle run"
             )
         except (OSError, UnicodeError, ValueError) as exc:
             return _blocked(
@@ -1121,6 +1403,25 @@ def advance_cycle(
             )
             if not path.is_file()
         ]
+        for role, path in zip(
+            ("novelty", "methods", "medical-safety"), review_paths
+        ):
+            if not path.is_file():
+                continue
+            try:
+                load_independent_review(
+                    path,
+                    expected_role=role,
+                    expected_idea_ids=candidate_ids,
+                    expected_run_id=manifest.run_id,
+                )
+            except ValueError as exc:
+                return _blocked(
+                    manifest,
+                    next_action="repair_independent_reviews",
+                    target=path,
+                    reason=str(exc),
+                )
         if missing_roles and provider is None:
             return _action(
                 manifest,
@@ -1150,6 +1451,7 @@ def advance_cycle(
             candidate_text = candidates_path.read_text(encoding="utf-8")
             reviews_dir.mkdir(exist_ok=True)
             for role in missing_roles:
+                reviews_identity = _directory_identity(reviews_dir)
                 system_prompt = (
                     f"Act only as the independent {role} reviewer. Return the strict "
                     "schema-version-1 JSON review for every candidate. Do not read or "
@@ -1166,6 +1468,7 @@ def advance_cycle(
                     stage=f"independent_review:{role}",
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
+                    expected_run_identity=run_identity,
                 )
                 target = reviews_dir / f"{role}.json"
                 if error is not None or result is None:
@@ -1182,6 +1485,7 @@ def advance_cycle(
                         result.content,
                         role=role,
                         candidate_ids=candidate_ids,
+                        expected_reviews_identity=reviews_identity,
                     )
                 except (OSError, UnicodeError, ValueError) as exc:
                     _mark_provider_output(
@@ -1193,6 +1497,7 @@ def advance_cycle(
                         result=result,
                         status="invalid_output",
                         error_type=type(exc).__name__,
+                        expected_run_identity=run_identity,
                     )
                     return _blocked(
                         manifest,
@@ -1208,9 +1513,14 @@ def advance_cycle(
                     stage=f"independent_review:{role}",
                     result=result,
                     status="committed",
+                    expected_run_identity=run_identity,
                 )
         try:
-            load_review_bundle(reviews_dir, expected_idea_ids=candidate_ids)
+            load_review_bundle(
+                reviews_dir,
+                expected_idea_ids=candidate_ids,
+                expected_run_id=manifest.run_id,
+            )
         except ValueError as exc:
             return _blocked(
                 manifest,
@@ -1286,6 +1596,7 @@ def advance_cycle(
                 stage="meta_review",
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
+                expected_run_identity=run_identity,
             )
             if error is not None or result is None:
                 return _blocked(
@@ -1301,6 +1612,7 @@ def advance_cycle(
                     result.content,
                     candidate_ids=candidate_ids,
                     run_id=manifest.run_id,
+                    expected_run_identity=run_identity,
                 )
             except (OSError, UnicodeError, ValueError) as exc:
                 _mark_provider_output(
@@ -1312,6 +1624,7 @@ def advance_cycle(
                     result=result,
                     status="invalid_output",
                     error_type=type(exc).__name__,
+                    expected_run_identity=run_identity,
                 )
                 return _blocked(
                     manifest,
@@ -1327,7 +1640,10 @@ def advance_cycle(
                 stage="meta_review",
                 result=result,
                 status="committed",
+                expected_run_identity=run_identity,
             )
+        archive_snapshot = archive_path.read_bytes()
+        archive_identity = _directory_identity(archive_path.parent)
         try:
             meta = load_meta_review(
                 meta_path,
@@ -1353,13 +1669,21 @@ def advance_cycle(
                 target=meta_path,
                 reason=str(exc),
             )
-        manifest = _transition(
-            project,
-            run_dir,
-            manifest,
-            "awaiting_human_decision",
-            meta_review_sha256=_sha256_file(meta_path),
-        )
+        try:
+            manifest = _transition(
+                project,
+                run_dir,
+                manifest,
+                "awaiting_human_decision",
+                meta_review_sha256=_sha256_file(meta_path),
+            )
+        except BaseException:
+            atomic_write_bytes(
+                archive_path,
+                archive_snapshot,
+                expected_parent_identity=archive_identity,
+            )
+            raise
 
     if manifest.state in {"awaiting_human_decision", "completed"}:
         if not meta_path.is_file() or _sha256_file(meta_path) != manifest.meta_review_sha256:

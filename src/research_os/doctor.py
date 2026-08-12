@@ -11,7 +11,11 @@ from research_os.project import (
     resolve_workspace_directory,
 )
 from research_os.sources import SourceRegistry
-from research_os.cycle import load_active_cycle, load_cycle_manifest
+from research_os.cycle import (
+    load_active_cycle,
+    load_cycle_manifest,
+    validate_cycle_artifacts,
+)
 from research_os.ideas import load_idea_archive
 from research_os.journal import validate_journal
 
@@ -122,6 +126,17 @@ def _check_projects(
                     if run_manifest.project_slug != manifest.slug:
                         raise ValueError(
                             f"cycle {run_dir.name} 属于其他课题"
+                        )
+                    artifact_issues = validate_cycle_artifacts(
+                        run_dir,
+                        run_manifest,
+                        source_ids=set(manifest.source_ids),
+                        archive_path=archive_path,
+                    )
+                    if artifact_issues:
+                        raise ValueError(
+                            f"cycle {run_dir.name} artifact validation failed: "
+                            + "; ".join(artifact_issues)
                         )
                 if run_count == 0:
                     raise ValueError("cycles 存在但没有可读 run")

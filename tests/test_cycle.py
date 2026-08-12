@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+import research_os.cycle as cycle_module
 
 from research_os.cycle import (
     advance_cycle,
@@ -303,6 +304,52 @@ def test_provider_is_not_dispatched_after_budget_is_exhausted(tmp_path: Path) ->
     assert action.manifest.calls_used == 1
 
 
+def test_provider_budget_reservation_rejects_a_stale_manifest(tmp_path: Path) -> None:
+    project = _external_project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a", max_calls=1)
+    run_dir = project / "cycles" / created.run_id
+    stale = load_cycle_manifest(run_dir / "manifest.yaml")
+    context = cycle_module.ExternalContextSnapshot(
+        path=run_dir / "context.md",
+        content="bounded context",
+        sha256="0" * 64,
+        context_source_id="src-context",
+        input_source_ids=("src-a",),
+    )
+
+    class Provider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+    cycle_module._begin_provider_call(
+        project,
+        run_dir,
+        stale,
+        provider=Provider(),
+        context=context,
+        stage="candidate_generation",
+        system_prompt="system",
+        user_prompt="user",
+        expected_run_identity=cycle_module._directory_identity(run_dir),
+    )
+
+    with pytest.raises(RuntimeError, match="concurrent|changed|stale"):
+        cycle_module._begin_provider_call(
+            project,
+            run_dir,
+            stale,
+            provider=Provider(),
+            context=context,
+            stage="candidate_generation",
+            system_prompt="system",
+            user_prompt="user",
+            expected_run_identity=cycle_module._directory_identity(run_dir),
+        )
+
+    assert load_cycle_manifest(run_dir / "manifest.yaml").calls_used == 1
+
+
 def test_approved_idea_must_match_the_reviewed_candidate(tmp_path: Path) -> None:
     project = _project(tmp_path)
     created = advance_cycle(tmp_path, "topic-a")
@@ -548,3 +595,289 @@ def test_provider_never_fakes_novelty_search(tmp_path: Path) -> None:
     assert action.state == "novelty_check"
     assert action.next_action == "document_novelty"
     assert action.manifest.calls_used == 0
+
+
+def test_cycle_blocks_reviews_copied_from_another_run(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id, checked=True)
+    assert advance_cycle(tmp_path, "topic-a").state == "independent_review"
+    target_reviews = project / "cycles" / created.run_id / "reviews"
+    target_reviews.mkdir()
+    for role in ("novelty", "methods", "medical-safety"):
+        (target_reviews / f"{role}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "run_id": "run-other",
+                    "role": role,
+                    "assessments": [_assessment("idea-0001")],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    blocked = advance_cycle(tmp_path, "topic-a")
+
+    assert blocked.state == "blocked"
+    assert blocked.next_action == "repair_independent_reviews"
+    assert "run_id" in blocked.reason
+
+
+def test_existing_invalid_review_blocks_before_provider_dispatch(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    source_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    created = advance_cycle(tmp_path, "topic-a")
+    idea = _idea(created.run_id, novelty_checked=True)
+    idea = IdeaRecord(
+        **{
+            **idea.__dict__,
+            "evidence_source_ids": (source_id,),
+            "novelty": NoveltyEvidence(
+                status="checked",
+                queries=idea.novelty.queries,
+                nearest_source_ids=(source_id,),
+                differences=idea.novelty.differences,
+                unresolved_overlap="",
+            ),
+        }
+    )
+    save_idea_archive(
+        project / "cycles" / created.run_id / "candidates.yaml",
+        IdeaArchive(1, "topic-a", (idea,)),
+    )
+    assert advance_cycle(tmp_path, "topic-a").state == "independent_review"
+    reviews = project / "cycles" / created.run_id / "reviews"
+    reviews.mkdir()
+    (reviews / "novelty.json").write_text("{broken", encoding="utf-8")
+
+    class ProviderThatMustNotRun:
+        def complete(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("provider ran before existing review validation")
+
+    blocked = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=ProviderThatMustNotRun(),
+        allow_external_api=True,
+    )
+
+    assert blocked.state == "blocked"
+    assert blocked.manifest.calls_used == 0
+    assert blocked.next_action == "repair_independent_reviews"
+
+
+def test_cycle_refuses_to_resume_with_tampered_journal(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    advance_cycle(tmp_path, "topic-a")
+    journal = project / "research-journal.jsonl"
+    journal.write_text(
+        journal.read_text(encoding="utf-8").replace("bounded", "tampered", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="journal|日志"):
+        advance_cycle(tmp_path, "topic-a")
+
+
+def test_state_transition_rolls_back_manifest_and_archive_if_journal_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id)
+    run_dir = project / "cycles" / created.run_id
+    manifest_path = run_dir / "manifest.yaml"
+    archive_path = project / "ideas" / "archive.yaml"
+    manifest_before = manifest_path.read_bytes()
+    archive_before = archive_path.read_bytes()
+    original_record = cycle_module._record
+
+    def fail_transition(*args: object, **kwargs: object) -> None:
+        if kwargs.get("event_type") == "state_transition":
+            raise OSError("simulated journal commit failure")
+        original_record(*args, **kwargs)
+
+    monkeypatch.setattr(cycle_module, "_record", fail_transition)
+
+    with pytest.raises(OSError, match="journal commit failure"):
+        advance_cycle(tmp_path, "topic-a")
+
+    assert manifest_path.read_bytes() == manifest_before
+    assert archive_path.read_bytes() == archive_before
+
+
+def test_new_run_work_packet_reserves_existing_idea_ids(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    first = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, first.run_id)
+    assert advance_cycle(tmp_path, "topic-a").state == "novelty_check"
+
+    second = advance_cycle(tmp_path, "topic-a", new_run=True)
+    packet = (
+        project / "cycles" / second.run_id / "work-packet.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Reserved Idea IDs: idea-0001" in packet
+    assert "Suggested first ID: idea-0002" in packet
+
+
+def test_provider_duplicate_idea_id_is_not_committed_in_new_run(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    source_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    first = advance_cycle(tmp_path, "topic-a")
+    idea = _idea(first.run_id)
+    idea = IdeaRecord(
+        **{**idea.__dict__, "evidence_source_ids": (source_id,)}
+    )
+    save_idea_archive(
+        project / "cycles" / first.run_id / "candidates.yaml",
+        IdeaArchive(1, "topic-a", (idea,)),
+    )
+    assert advance_cycle(tmp_path, "topic-a").state == "novelty_check"
+    second = advance_cycle(tmp_path, "topic-a", new_run=True)
+
+    class DuplicateProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(self, *_args: object, **_kwargs: object) -> CompletionResult:
+            return CompletionResult(
+                content=_candidate_json(second.run_id, source_id),
+                provenance={"model": self.model},
+            )
+
+    blocked = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=DuplicateProvider(),
+        allow_external_api=True,
+    )
+
+    assert blocked.state == "blocked"
+    assert "belongs to another run" in blocked.reason
+    assert not (project / "cycles" / second.run_id / "candidates.yaml").exists()
+
+
+def test_run_directory_replacement_during_candidate_load_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, created.run_id)
+    run_dir = project / "cycles" / created.run_id
+    moved = tmp_path / "moved-run"
+    original_load = cycle_module._load_candidates
+    sentinel = b"replacement sentinel\n"
+    replaced = False
+
+    def replace_then_load(*args, **kwargs):
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            run_dir.rename(moved)
+            run_dir.mkdir()
+            (run_dir / "manifest.yaml").write_bytes(sentinel)
+            (run_dir / "candidates.yaml").write_bytes(
+                (moved / "candidates.yaml").read_bytes()
+            )
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(cycle_module, "_load_candidates", replace_then_load)
+
+    blocked = advance_cycle(tmp_path, "topic-a")
+
+    assert blocked.state == "blocked"
+    assert "replaced" in blocked.reason or "changed" in blocked.reason
+    assert (run_dir / "manifest.yaml").read_bytes() == sentinel
+    archive = load_idea_archive(
+        project / "ideas" / "archive.yaml", allowed_source_ids={"src-a"}
+    )
+    assert archive.ideas == ()
+
+
+def test_run_directory_replacement_during_provider_call_is_not_written(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    source_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    created = advance_cycle(tmp_path, "topic-a")
+    run_dir = project / "cycles" / created.run_id
+    moved = tmp_path / "provider-moved-run"
+    sentinel = b"replacement sentinel\n"
+
+    class ReplacingProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(self, *_args: object, **_kwargs: object) -> CompletionResult:
+            run_dir.rename(moved)
+            run_dir.mkdir()
+            (run_dir / "manifest.yaml").write_bytes(sentinel)
+            return CompletionResult(
+                content=_candidate_json(created.run_id, source_id),
+                provenance={"model": self.model},
+            )
+
+    with pytest.raises(OSError, match="replaced|changed"):
+        advance_cycle(
+            tmp_path,
+            "topic-a",
+            provider=ReplacingProvider(),
+            allow_external_api=True,
+        )
+
+    assert (run_dir / "manifest.yaml").read_bytes() == sentinel
+    assert sorted(path.name for path in run_dir.iterdir()) == ["manifest.yaml"]
+
+
+def test_provider_does_not_overwrite_candidate_created_during_call(
+    tmp_path: Path,
+) -> None:
+    project = _external_project(tmp_path)
+    source_id = next(
+        record.source_id
+        for record in SourceRegistry(tmp_path / "library" / "sources.jsonl").records()
+    )
+    created = advance_cycle(tmp_path, "topic-a")
+    candidates_path = project / "cycles" / created.run_id / "candidates.yaml"
+    human_bytes = (_candidate_json(created.run_id, source_id) + "\n").encode("utf-8")
+
+    class SlowProvider:
+        base_url = "https://provider.test/v1"
+        model = "test-model"
+        temperature = 0.1
+
+        def complete(self, *_args: object, **_kwargs: object) -> CompletionResult:
+            candidates_path.write_bytes(human_bytes)
+            return CompletionResult(
+                content=_candidate_json(created.run_id, source_id),
+                provenance={"model": self.model},
+            )
+
+    action = advance_cycle(
+        tmp_path,
+        "topic-a",
+        provider=SlowProvider(),
+        allow_external_api=True,
+    )
+
+    assert action.state == "blocked"
+    assert "appeared" in action.reason or "overwrite" in action.reason
+    assert candidates_path.read_bytes() == human_bytes

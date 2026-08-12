@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from research_os.io import atomic_write_text
+from research_os.evidence import load_ledger, validate_ledger
 from research_os.project import (
     load_project_manifest,
     resolve_project_path,
@@ -126,6 +127,21 @@ def build_external_context(
             )
         selected.append(record)
 
+    ledger_path = project / "02-evidence-ledger.yaml"
+    if ledger_path.is_file():
+        ledger_issues = validate_ledger(
+            load_ledger(ledger_path),
+            known_source_ids=set(manifest.source_ids),
+        )
+        if ledger_issues:
+            details = "; ".join(
+                f"{issue.claim_id}:{issue.code}" for issue in ledger_issues
+            )
+            raise PermissionError(
+                "evidence ledger is not safe for external context; "
+                f"repair every claim and source reference first: {details}"
+            )
+
     sections = [
         "# External co-researcher context",
         "",
@@ -146,24 +162,35 @@ def build_external_context(
     content = "\n".join(sections).rstrip() + "\n"
     _assert_no_identifiable_medical_markers(content)
 
-    output = resolved_run / "context.md"
-    if output.exists():
-        existing = output.read_bytes()
-        if existing != content.encode("utf-8"):
-            raise FileExistsError(
-                "context.md already exists with different bytes; start a new run"
-            )
-    else:
+    content_bytes = content.encode("utf-8")
+    digest = hashlib.sha256(content_bytes).hexdigest()
+    primary = resolved_run / "context.md"
+    if not primary.exists():
+        output = primary
         metadata = resolved_run.stat()
         atomic_write_text(
             output,
             content,
             expected_parent_identity=(metadata.st_dev, metadata.st_ino),
         )
+    elif primary.read_bytes() == content_bytes:
+        output = primary
+    else:
+        output = resolved_run / f"context-{digest[:16]}.md"
+        if output.exists() and output.read_bytes() != content_bytes:
+            raise FileExistsError(
+                "versioned context path exists with different bytes"
+            )
+        if not output.exists():
+            metadata = resolved_run.stat()
+            atomic_write_text(
+                output,
+                content,
+                expected_parent_identity=(metadata.st_dev, metadata.st_ino),
+            )
     exact_bytes = output.read_bytes()
-    if exact_bytes != content.encode("utf-8"):
+    if exact_bytes != content_bytes:
         raise OSError("context.md changed after its snapshot was committed")
-    digest = hashlib.sha256(exact_bytes).hexdigest()
     context_record = SourceRegistry(
         registry_path,
         expected_parent_identity=(library.stat().st_dev, library.stat().st_ino),
