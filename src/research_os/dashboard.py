@@ -405,12 +405,14 @@ def build_project_dashboard(
     slug: str,
     *,
     as_of: date,
+    expected_project_identity: tuple[int, int] | None = None,
 ) -> ProjectDashboard:
     if not isinstance(as_of, date):
         raise TypeError("as_of must be a date")
     workspace = workspace.resolve()
     project = resolve_project_path(workspace, slug, require_exists=True)
-    project_identity = directory_identity(project)
+    project_identity = expected_project_identity or directory_identity(project)
+    assert_directory_identity(project, project_identity, context="project")
     _preflight_project_inputs(project)
     assert_directory_identity(project, project_identity, context="project")
     manifest = load_project_manifest(

@@ -755,3 +755,17 @@ def test_dashboard_rejects_project_directory_replacement_after_manifest_read(
             project.name,
             as_of=date(2026, 8, 12),
         )
+
+
+def test_dashboard_accepts_captured_project_identity(tmp_path: Path) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    expected = (project.stat().st_dev, project.stat().st_ino)
+
+    snapshot = build_project_dashboard(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 12),
+        expected_project_identity=expected,
+    )
+
+    assert snapshot.project.slug == project.name
