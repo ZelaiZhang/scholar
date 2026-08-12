@@ -9,7 +9,11 @@ from pathlib import Path
 
 import yaml
 
-from research_os.io import atomic_create_text, atomic_write_text
+from research_os.io import (
+    atomic_create_text,
+    atomic_write_text,
+    read_stable_direct_text,
+)
 
 
 IDEA_ID_PATTERN = re.compile(r"^idea-[0-9]{4}$")
@@ -322,7 +326,7 @@ def load_idea_archive(
     path: Path, *, allowed_source_ids: set[str] | None = None
 ) -> IdeaArchive:
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(read_stable_direct_text(path))
     except yaml.YAMLError as exc:
         raise ValueError(f"Idea archive YAML 损坏: {path}") from exc
     if not isinstance(raw, dict):

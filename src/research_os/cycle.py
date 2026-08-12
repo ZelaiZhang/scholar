@@ -1094,6 +1094,16 @@ def validate_cycle_artifacts(
             candidates = _load_candidates(
                 candidates_path, manifest=manifest, source_ids=source_ids
             )
+            if manifest.state in {
+                "independent_review",
+                "meta_review",
+                "awaiting_human_decision",
+                "completed",
+            } and any(not _novelty_complete(idea) for idea in candidates.ideas):
+                raise ValueError(
+                    "novelty gate requires checked candidates with queries, "
+                    "nearest sources, and documented differences"
+                )
             candidate_ids = {idea.idea_id for idea in candidates.ideas}
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(f"candidates: {exc}")

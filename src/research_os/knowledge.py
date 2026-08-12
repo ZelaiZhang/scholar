@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from research_os.io import read_stable_direct_text
 from research_os.project import (
     _is_link_or_reparse_point,
     resolve_workspace_directory,
@@ -292,7 +293,7 @@ def _load_yaml(path: Path, context: str) -> dict[str, object]:
     if not path.is_file():
         raise FileNotFoundError(path)
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(read_stable_direct_text(path))
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise ValueError(f"{context} 无法解析: {path}") from exc
     return _mapping(raw, context)

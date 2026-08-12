@@ -1,13 +1,20 @@
 import json
 import os
 import subprocess
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
 import pytest
 import yaml
 
-from research_os.cycle import advance_cycle, approve_active_cycle_idea
+from research_os.cycle import (
+    advance_cycle,
+    approve_active_cycle_idea,
+    load_cycle_manifest,
+    save_cycle_manifest,
+)
+import research_os.dashboard as dashboard_module
 from research_os.dashboard import build_project_dashboard
 from research_os.dashboard_risks import RiskFacts, evaluate_dashboard_risks
 from research_os.ideas import (
@@ -379,6 +386,28 @@ def test_dashboard_does_not_report_gate_ready_when_frozen_artifact_changed(
         )
 
 
+def test_dashboard_rejects_novelty_gate_without_checked_candidates(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_ready_project(tmp_path)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    assert advance_cycle(tmp_path, project.name).state == "novelty_check"
+    manifest_path = project / "cycles" / created.run_id / "manifest.yaml"
+    manifest = load_cycle_manifest(manifest_path)
+    save_cycle_manifest(
+        manifest_path,
+        replace(manifest, state="independent_review"),
+    )
+
+    with pytest.raises(ValueError, match="novelty|新颖性"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
 def test_dashboard_reports_human_decision_and_selected_idea(tmp_path: Path) -> None:
     project, source_id = _write_ready_project(tmp_path)
     run_id = _advance_to_human_decision(tmp_path, project, source_id)
@@ -625,6 +654,34 @@ def test_dashboard_rejects_idea_archive_from_another_project(
     )
 
     with pytest.raises(ValueError, match="Idea archive.*another-project|不同课题"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
+def test_dashboard_rechecks_ledger_at_read_time_after_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    ledger = project / "02-evidence-ledger.yaml"
+    outside = tmp_path / "outside-ledger.yaml"
+    outside.write_bytes(ledger.read_bytes())
+    original_preflight = dashboard_module._preflight_project_inputs
+
+    def swap_after_preflight(project_path: Path) -> None:
+        original_preflight(project_path)
+        ledger.unlink()
+        ledger.symlink_to(outside)
+
+    monkeypatch.setattr(
+        dashboard_module,
+        "_preflight_project_inputs",
+        swap_after_preflight,
+    )
+
+    with pytest.raises(ValueError, match="符号链接|目录联接"):
         build_project_dashboard(
             tmp_path,
             project.name,

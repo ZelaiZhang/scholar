@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from research_os.io import atomic_write_text
+from research_os.io import atomic_write_text, read_stable_direct_text
 from research_os.sources import SOURCE_ID_PATTERN
 
 
@@ -151,7 +151,9 @@ def load_project_manifest(
         )
 
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(
+            read_stable_direct_text(path, expected_parent=project_path)
+        )
     except yaml.YAMLError as exc:
         raise ValueError(f"课题元数据 YAML 无法解析: {path}: {exc}") from exc
     if not isinstance(raw, dict) or raw.get("schema_version") != 1:

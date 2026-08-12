@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml
 
+from research_os.io import read_stable_direct_text
+
 
 class LedgerFormatError(ValueError):
     """Raised when an evidence ledger is not a YAML mapping."""
@@ -24,7 +26,7 @@ class ValidationIssue:
 
 def load_ledger(path: Path) -> dict[str, object]:
     try:
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        loaded = yaml.safe_load(read_stable_direct_text(path))
     except yaml.YAMLError as exc:
         raise LedgerFormatError(f"证据账本 YAML 无法解析: {exc}") from exc
     if not isinstance(loaded, dict):
