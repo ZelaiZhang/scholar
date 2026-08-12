@@ -23,7 +23,7 @@ v0.4 新增一个本地、结构化、可审计的科研方法知识库。它不
 - 医疗语言模型与诊断：*Large language models encode clinical knowledge*（DOI `10.1038/s41586-023-06291-2`）、*Towards accurate differential diagnosis with large language models*（DOI `10.1038/s41586-025-08869-4`）和 *Towards conversational diagnostic artificial intelligence*（DOI `10.1038/s41586-025-08866-7`）。这些工作要求评价不能只看考试或单一准确率，还要覆盖伤害、偏差、沟通、工作流和外部适用性。
 - 推理与证据：Chain-of-Thought（arXiv `2201.11903`）、Self-Consistency（arXiv `2203.11171`）、过程监督（arXiv `2305.20050`）、RAG（arXiv `2005.11401`）和 Self-RAG（arXiv `2310.11511`）。系统只保存可公开复核的简洁依据和验证记录，不保存或索取模型隐藏思维链。
 - 模型适配：LoRA（arXiv `2106.09685`）、QLoRA（arXiv `2305.14314`）和 DPO（arXiv `2305.18290`）。知识库记录论文报告的适用条件与限制，不把单篇结果改写为普遍最优实践。
-- 医疗 AI 方法规范：TRIPOD+AI（DOI `10.1136/bmj.q902`）、PROBAST+AI（DOI `10.1136/bmj-2024-082505`）、STARD-AI（DOI `10.1038/s41591-025-03953-8`）、FUTURE-AI（DOI `10.1136/bmj-2024-081554`）、DECIDE-AI（DOI `10.1038/s41591-022-01772-9`）和 CLAIM 2024（DOI `10.1148/ryai.240300`）。
+- 医疗 AI 方法规范：TRIPOD+AI 主文（DOI `10.1136/bmj-2023-078378`；`10.1136/bmj.q902` 为勘误）、PROBAST+AI（DOI `10.1136/bmj-2024-082505`）、STARD-AI（DOI `10.1038/s41591-025-03953-8`）、FUTURE-AI（DOI `10.1136/bmj-2024-081554`）、DECIDE-AI（DOI `10.1038/s41591-022-01772-9`）和 CLAIM 2024（DOI `10.1148/ryai.240300`）。
 
 报告规范只以“适用范围、版本关系和原文链接”的形式进入知识库。除非许可明确允许，不复制完整清单或受版权保护的全文。
 

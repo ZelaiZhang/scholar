@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-12；功能基线：`3ac6907`；包版本：`0.3.0`。
+> 最后核对：2026-08-12；包版本：`0.4.0`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.3.0`，已经完成：
+当前稳定版本是 `v0.4.0`，已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -35,9 +35,12 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 10. OpenAI-compatible API 接入，包括自定义 DeepSeek 配置；
 11. 调用授权、来源授权、敏感医疗字段拦截和 provenance；
 12. 哈希链研究日志、产物哈希、并发保护和失败回滚；
-13. 源码安装、wheel 安装和关键用户旅程测试。
+13. 源码安装、wheel 安装和关键用户旅程测试；
+14. 结构化科研方法知识库、确定性搜索和课题推荐；
+15. 28 条专业种子来源、17 张知识卡、5 张主题地图和 4 份方法手册；
+16. 医疗 AI 报告规范路由和知识库完整性检查。
 
-截至此基线，完整测试为 `192 passed`，并已通过 warnings-as-errors、`compileall`、`pip check` 和 diff 格式检查。
+截至本文档更新，v0.4 完整测试为 `222 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令。
 
 ## 3. 系统总览
 
@@ -49,8 +52,10 @@ flowchart LR
     G --> C["Research OS CLI"]
     S --> P["课题文件与人工判断"]
     C --> R["来源登记表与证据账本"]
+    C --> K["科研方法知识库"]
     C --> X["有界 Research Cycle"]
     R --> P
+    K --> G
     X --> P
     P --> G
     X -. "显式双重授权后可选" .-> API["DeepSeek / OpenAI-compatible API"]
@@ -75,7 +80,8 @@ flowchart LR
 │  ├─ sources.jsonl            # 全局来源登记表
 │  ├─ sources/                 # 提取文本等来源副本
 │  ├─ papers/                  # 结构化论文卡片
-│  └─ literature-matrix.csv    # 文献比较矩阵
+│  ├─ knowledge/               # 目录、知识卡、地图、手册与报告规范
+│  └─ literature-matrix.csv    # 课题文献比较矩阵
 ├─ projects/<slug>/            # 各课题严格隔离的工作区
 ├─ src/research_os/            # Python 包和 CLI
 └─ tests/                      # 单元、回归与 wheel 冒烟测试
@@ -123,6 +129,9 @@ flowchart LR
 | `cycle` | 创建或恢复有界科研循环 | 是 | 默认否；显式授权后可调用 API |
 | `approve-idea` | 由研究者批准当前 run 的入围 Idea | 是 | 否 |
 | `model-call` | 发起一次受控 OpenAI-compatible API 调用 | 是 | 是，必须显式授权 |
+| `kb doctor` | 检查目录、卡片、来源、定位、替代关系和资产引用 | 否 | 否 |
+| `kb search` | 按固定权重执行本地可解释检索 | 否 | 否 |
+| `kb recommend` | 根据课题画像和 guide 阶段返回最多三项参考 | 否 | 否 |
 
 日常入口：
 
@@ -151,6 +160,16 @@ flowchart LR
 ```
 
 默认 `cycle` 不调用外部模型。只有同时提供 `--provider-role` 和 `--allow-external-api`，且所有进入上下文的来源均已授权、哈希未漂移，才允许外发。
+
+知识库日常入口：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb doctor
+.\.venv\Scripts\research-os.exe kb search "diagnostic accuracy" --topic medical-ai
+.\.venv\Scripts\research-os.exe kb recommend --project medical-reasoning
+```
+
+全局知识条目只提供方法学线索。推荐命令不会改写 `project.yaml`；需要引用时仍必须用 `paper-intake` 显式关联到目标课题。
 
 ## 7. 11 个 Codex 科研技能
 
@@ -280,6 +299,9 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `journal.py` | 追加式哈希链研究日志 | journal 损坏必须阻断状态推进 |
 | `doctor.py` | 只读工作区完整性检查 | 任何数据损坏都应转为可读 FAIL，而不是异常崩溃 |
 | `io.py` | 原子写入和 create-only 基元 | 不要退化为普通覆盖写 |
+| `knowledge.py` | catalog/card/profile schema、来源和路径校验、KB doctor | 阅读范围和 locator 门禁不能放宽 |
+| `knowledge_search.py` | 固定权重检索和稳定排序 | 禁止引入随机、联网或不可解释排序 |
+| `knowledge_recommend.py` | 课题画像、阶段、手册和报告规范推荐 | 最多三项，绝不自动关联项目证据 |
 
 ## 13. 开发与验证
 
@@ -315,7 +337,8 @@ git diff --check
 - `docs/superpowers/specs/2026-08-12-research-os-design.md`：初始 Research OS；
 - `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`：每日驾驶舱；
 - `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`：有界 AI Co-Researcher；
-- `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`：v0.4 专业知识库设计，尚未实现。
+- `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`：v0.4 专业知识库设计；
+- `docs/superpowers/plans/2026-08-12-research-methods-knowledge-base.md`：v0.4 TDD 实施计划。
 
 关键提交脉络：
 
@@ -331,32 +354,40 @@ git diff --check
 | `23e0a8c` | 并发、回滚、上下文和人工文件保护加固 |
 | `d21554b` | provider 预算锁崩溃恢复 |
 | `8bd3cde` / `3ac6907` | v0.4 专业知识库设计及整理 |
+| `bfcc833` | 知识目录、卡片和画像严格校验 |
+| `71c2c9a` | 确定性知识检索 |
+| `3bb4e9c` | 课题方法推荐 |
+| `4b5c6f8` | `kb` CLI |
+| `f7aa067` | `guide` 和 `doctor` 集成 |
+| `bc0b34b` | v0.4 专业种子知识库 |
 
 ## 15. 已知限制与技术债
 
 - 本仓库不执行实验，只把流程推进到严谨实验设计并接收外部聚合结果；
 - 当前没有向量数据库、embedding 检索或知识图谱服务；
 - 当前没有自动在线刷新论文和指南，来源仍需登记和核验；
-- 当前知识资产只有一张关于 *Towards end-to-end automation of AI research* 的深读卡片和空的文献矩阵，不能称为完整专业知识库；
+- 当前知识库有 28 条种子来源和 17 张卡；仍需逐步把摘要卡升级为全文卡，并定期核对规范更正与版本；
 - 医疗敏感字段拦截是保守关键词检查，不可替代机构数据治理和伦理审批；
 - `cycle.py` 体积较大，未来可按状态阶段、事务和 provider 提交拆分，但必须保持现有恢复/并发测试；
 - 自动评审是研究质量辅助信号，不能替代导师、同行评审、统计复核或临床验证；
 - 软件尚未承诺稳定公共 Python API，现阶段优先保持 CLI 和文件格式兼容。
 
-## 16. v0.4 专业知识库：已设计，尚未实现
+## 16. v0.4 专业知识库：已实现
 
-> **规划状态：只有书面规格，没有 CLI、目录或检索实现。不要在代码中假设 `kb` 命令已经存在。**
+> **实现状态：CLI、严格数据模型、确定性检索、推荐、guide/doctor 集成与种子资产均已存在。**
 
-设计目标是加入结构化 Research Methods Knowledge Base，而不是简单堆 PDF。计划包含：
+v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 
 - `library/knowledge/catalog.yaml` 统一目录；
 - 方法卡、主题地图、场景 playbook 和医学报告规范；
 - `kb search`、`kb recommend`、`kb doctor`；
-- 医疗 AI、推理、RAG、LoRA/QLoRA、DPO、评测与报告指南等种子证据；
+- 28 条医疗 AI、推理、RAG、LoRA/QLoRA、DPO/RLHF、量化、评测与报告指南来源；
+- 17 张知识卡，其中 10 张标记为全文/官方开放网页正文核验；
+- 5 张主题地图、4 份方法手册和 1 份医疗 AI 报告规范矩阵；
 - 可选的课题 `knowledge-profile.yaml`；
 - 确定性检索、来源分级、版本/失效日期和课题证据隔离。
 
-完整规格见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`。下一步应先根据该规格编写实施计划，再用 TDD 分批实现，不应直接从“做向量库”开始。
+完整规格见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`。后续重点是全文核验、版本维护与真实课题走查；达到至少 100 张核验卡前，不引入向量数据库。
 
 ## 17. 安全扩展流程
 

@@ -239,6 +239,48 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 
 命令同时检查调用级许可、来源级许可和当前文件哈希。成功后生成同名 `.provenance.json`，记录模型、参数、时间、用量和提示词哈希，但不记录 Key。配置参考 `config/providers.example.yaml`。
 
+## v0.4 专业科研方法知识库
+
+知识库不是随意堆积的 PDF 或模型记忆。`library/knowledge/catalog.yaml` 和带阅读范围、locator 的知识卡是唯一真源；主题地图与方法手册提供阅读和操作入口。当前种子库包含医疗 AI、诊断推理、CoT、RAG、LoRA/QLoRA、量化、DPO/RLHF、AI 科研自动化和医疗报告规范。
+
+先做只读自检：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb doctor
+```
+
+确定性搜索，相同目录和参数会得到相同排序：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb search `
+  "diagnostic accuracy" `
+  --topic medical-ai `
+  --verified-scope abstract `
+  --limit 5
+```
+
+为课题生成最多三项阶段化方法参考：
+
+```powershell
+.\.venv\Scripts\research-os.exe kb recommend `
+  --project medical-reasoning
+```
+
+项目可选 `knowledge-profile.yaml`：
+
+```yaml
+schema_version: 1
+domains: [medical-ai]
+tracks: [diagnostic-reasoning, rag]
+study_type: diagnostic-accuracy-study
+data_modalities: [text]
+reporting_context: [diagnostic-accuracy]
+```
+
+缺少画像时系统给通用方法和补全提示，不会从自由文本猜测医疗场景。`metadata / abstract / fulltext` 三种核验范围严格分开；摘要卡不会冒充全文证据。全局知识条目默认只是方法学线索，只有经 `$paper-intake` 显式关联到目标 `project.yaml` 的 `source_id` 才能进入该课题证据账本、外发上下文或论文引用。
+
+`guide` 会在保持唯一“下一步”的同时显示最多三项“方法学参考”。知识库损坏时，课题状态仍可读取，但参考区会提示先运行 `kb doctor`。
+
 ## 旧课题与升级
 
 第一版课题没有 `project.yaml` 时，`guide` 可以从目录名和研究简报标题回退读取，但不会猜它用了哪些全局来源。之后执行带 `--project` 的 `add-source` 或 `add-sources`，系统会创建元数据并补充明确关联。
@@ -269,6 +311,9 @@ add-sources       原子批量登记来源
 extract-pdf       提取带页码边界的 PDF 文本
 validate-ledger   校验证据账本
 model-call        调用显式授权的外部模型
+kb doctor         检查知识目录、卡片、来源与引用
+kb search         确定性本地方法学检索
+kb recommend      按课题画像和阶段推荐最多三项参考
 ```
 
 ## 开发验证
@@ -281,12 +326,14 @@ $env:PYTHONUTF8="1"
 git diff --check
 ```
 
-## v0.3 恢复与并发安全
+## v0.4 恢复、证据与并发安全
 
 - 调用额度通过 `provider-budget lock` 原子占位，并对陈旧 manifest 做并发校验；网络失败和无效响应仍计入额度。
 - provider 产物使用 `create-only commit`：调用等待期间若研究者写入候选、评审或 meta-review，系统拒绝覆盖人工文件。
 - 外发前逐条校验证据账本的 claim/source_id；上下文变化时保留原 `context.md`，新快照写入 `context-<sha256前16位>.md`。
 - `approve-idea` 会原子完成 run；批准成功后直接运行 `guide`，下一步进入 `$experiment-advisor`，无需再补一次 `cycle`。
 - `doctor` 校验 run 状态、冻结产物哈希、三路评审、人工 selected Idea，以及 journal 中引用的 run 和产物是否真实存在。
+- `kb doctor` 校验 catalog schema、来源登记、阅读范围、全文 locator、替代关系、陈旧复核、知识资产引用和路径安全。
+- `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。
 
-日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`，实施计划见 `docs/superpowers/plans/2026-08-12-research-os-co-researcher.md`。
+日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。

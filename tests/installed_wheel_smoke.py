@@ -35,6 +35,14 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     for folder in ("projects", "library", "inbox", "config"):
         (workspace / folder).mkdir()
     shutil.copy2(repository / "config" / "research.yaml", workspace / "config")
+    shutil.copy2(
+        repository / "library" / "sources.jsonl",
+        workspace / "library" / "sources.jsonl",
+    )
+    shutil.copytree(
+        repository / "library" / "knowledge",
+        workspace / "library" / "knowledge",
+    )
     for skill in EXPECTED_SKILLS:
         destination = workspace / ".agents" / "skills" / skill
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +63,49 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     )
     assert code == 0, created
     project = workspace / "projects" / "wheel-topic"
+    (project / "knowledge-profile.yaml").write_text(
+        "schema_version: 1\n"
+        "domains: [medical-ai]\n"
+        "tracks: [diagnostic-reasoning]\n"
+        "study_type: diagnostic-accuracy-study\n"
+        "data_modalities: [text]\n"
+        "reporting_context: [diagnostic-accuracy]\n",
+        encoding="utf-8",
+    )
+    code, kb_doctor = run_cli(["kb", "doctor", "--workspace", str(workspace)])
+    assert code == 0 and "28 条目录" in kb_doctor, kb_doctor
+    code, kb_search = run_cli(
+        [
+            "kb",
+            "search",
+            "diagnostic accuracy",
+            "--topic",
+            "medical-ai",
+            "--format",
+            "json",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+    assert code == 0, kb_search
+    search_payload = json.loads(kb_search)
+    assert search_payload and search_payload[0]["source_id"].startswith("src-")
+    code, kb_recommend = run_cli(
+        [
+            "kb",
+            "recommend",
+            "--project",
+            "wheel-topic",
+            "--format",
+            "json",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+    assert code == 0, kb_recommend
+    recommendations = json.loads(kb_recommend)
+    assert 1 <= len(recommendations) <= 3
+    assert any(item["kind"] == "reporting-guideline" for item in recommendations)
     source = SourceRegistry(workspace / "library" / "sources.jsonl").add(
         "doi:10.1000/wheel-smoke"
     )
@@ -185,6 +236,8 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         ["guide", "--project", "wheel-topic", "--workspace", str(workspace)]
     )
     assert code == 0 and "$experiment-advisor" in guide, guide
+    assert guide.count("## 下一步") == 1
+    assert "## 方法学参考" in guide
     code, final_doctor = run_cli(["doctor", "--workspace", str(workspace)])
     assert code == 0, final_doctor
 

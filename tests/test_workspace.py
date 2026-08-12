@@ -56,7 +56,15 @@ def test_daily_driver_is_documented_and_packaged() -> None:
     assert "research-os.exe cycle" in readme
     assert "research-os.exe approve-idea" in readme
     assert "$research-cycle" in readme
-    assert 'version = "0.3.0"' in pyproject
+    assert 'version = "0.4.0"' in pyproject
+
+
+def test_package_version_matches_project_metadata() -> None:
+    from research_os import __version__
+
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert f'version = "{__version__}"' in pyproject
 
 
 def test_supervised_cycle_boundaries_and_deepseek_are_documented() -> None:
