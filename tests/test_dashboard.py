@@ -2,6 +2,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import yaml
+
 from research_os.cycle import advance_cycle, approve_active_cycle_idea
 from research_os.dashboard import build_project_dashboard
 from research_os.dashboard_risks import RiskFacts, evaluate_dashboard_risks
@@ -12,6 +14,7 @@ from research_os.ideas import (
     NoveltyEvidence,
     save_idea_archive,
 )
+from research_os.guidance import guide_project
 from research_os.project import create_project, link_project_sources
 from research_os.sources import SourceRegistry
 
@@ -152,6 +155,56 @@ def _advance_to_human_decision(
     final = advance_cycle(workspace, project.name)
     assert final.state == "awaiting_human_decision"
     return created.run_id
+
+
+def _write_minimal_knowledge_base(workspace: Path) -> None:
+    root = workspace / "library" / "knowledge"
+    root.mkdir(parents=True)
+    (root / "playbooks").mkdir()
+    method = SourceRegistry(workspace / "library" / "sources.jsonl").add(
+        "doi:10.1000/dashboard-method"
+    )
+    catalog = {
+        "schema_version": 1,
+        "entries": [
+            {
+                "source_id": method.source_id,
+                "canonical": method.canonical,
+                "title": "可复核的模型评价方法",
+                "authors": ["Methods Group"],
+                "year": 2025,
+                "source_type": "paper",
+                "venue": "Methods Journal",
+                "topics": ["evaluation"],
+                "methods": ["model-evaluation"],
+                "stages": ["problem-definition", "experiment-design"],
+                "priority": "core",
+                "verification": {
+                    "metadata": "verified",
+                    "abstract": "verified",
+                    "fulltext": "unverified",
+                },
+                "reviewed_at": "2026-08-12",
+                "status": "active",
+                "superseded_by": "",
+                "access_url": "https://doi.org/10.1000/dashboard-method",
+                "license": "unknown",
+                "notes": "",
+            }
+        ],
+    }
+    (root / "catalog.yaml").write_text(
+        yaml.safe_dump(catalog, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    (root / "aliases.yaml").write_text(
+        "schema_version: 1\naliases: {}\n",
+        encoding="utf-8",
+    )
+    (root / "playbooks" / "evaluation-and-ablation.md").write_text(
+        "# 评价与消融方法手册\n",
+        encoding="utf-8",
+    )
 
 
 def test_dashboard_reports_project_scoped_evidence(tmp_path: Path) -> None:
@@ -326,3 +379,72 @@ def test_risks_only_apply_medical_and_adaptation_rules_from_profile() -> None:
         ("MODEL_ADAPTATION_DESIGN_INCOMPLETE", "missing_required"),
     ]
     assert all("进行中" in risk.trigger for risk in applicable)
+
+
+def test_dashboard_reuses_stage_aware_method_recommendations(tmp_path: Path) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    _write_minimal_knowledge_base(tmp_path)
+
+    guide = guide_project(tmp_path, project.name)
+    snapshot = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    )
+
+    assert 1 <= len(snapshot.recommendations) <= 3
+    assert snapshot.recommendations == guide.method_references
+    assert snapshot.recommendations[-1].kind == "profile-hint"
+    assert all(item.cannot_use_for for item in snapshot.recommendations)
+
+
+def test_actions_prioritize_repair_then_workflow_then_methods(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "失效来源课题", "stale-source")
+    link_project_sources(tmp_path, "stale-source", ["src-missing"])
+    (project / "02-evidence-ledger.yaml").write_text(
+        "schema_version: 1\nclaims: []\n",
+        encoding="utf-8",
+    )
+    _write_minimal_knowledge_base(tmp_path)
+
+    snapshot = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    )
+
+    assert 1 <= len(snapshot.actions) <= 3
+    assert snapshot.actions[0].category == "repair"
+    assert snapshot.actions[-1].category == "methodology"
+    assert [action.priority for action in snapshot.actions] == sorted(
+        action.priority for action in snapshot.actions
+    )
+    assert len({action.command for action in snapshot.actions}) == len(
+        snapshot.actions
+    )
+    assert all(
+        action.rationale and action.expected_artifact
+        for action in snapshot.actions
+    )
+    assert snapshot.actions[0].command == guide_project(
+        tmp_path, project.name
+    ).next_action.command
+
+
+def test_action_commands_never_include_evidence_statements(tmp_path: Path) -> None:
+    project, source_id = _write_ready_project(tmp_path)
+    sentinel = "DO-NOT-EXECUTE-EVIDENCE-TEXT"
+    ledger = project / "02-evidence-ledger.yaml"
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8").replace(
+            "论文报告了公开任务结果", sentinel
+        ),
+        encoding="utf-8",
+    )
+    _write_minimal_knowledge_base(tmp_path)
+
+    snapshot = build_project_dashboard(
+        tmp_path, project.name, as_of=date(2026, 8, 12)
+    )
+
+    assert source_id
+    assert len(snapshot.actions) <= 3
+    assert all(sentinel not in action.command for action in snapshot.actions)

@@ -14,6 +14,7 @@ from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.guidance import GuideReport, guide_project
 from research_os.ideas import load_idea_archive
 from research_os.knowledge import load_profile
+from research_os.knowledge_recommend import KnowledgeRecommendation
 from research_os.project import (
     _is_link_or_reparse_point,
     load_project_manifest,
@@ -57,13 +58,25 @@ class IdeaStatus:
 
 
 @dataclass(frozen=True)
+class DashboardAction:
+    code: str
+    priority: int
+    category: str
+    rationale: str
+    expected_artifact: str
+    command: str
+
+
+@dataclass(frozen=True)
 class ProjectDashboard:
     schema_version: int
     as_of: str
     project: ProjectStatus
     evidence: EvidenceHealth
     idea: IdeaStatus
+    recommendations: tuple[KnowledgeRecommendation, ...]
     risks: tuple[DashboardRisk, ...]
+    actions: tuple[DashboardAction, ...]
 
 
 def _project_status(report: GuideReport) -> ProjectStatus:
@@ -184,6 +197,58 @@ def _profile_facts(project: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return profile.domains, profile.tracks
 
 
+def _dashboard_actions(
+    report: GuideReport,
+    risks: tuple[DashboardRisk, ...],
+) -> tuple[DashboardAction, ...]:
+    candidates: list[DashboardAction] = []
+    blocking = tuple(risk for risk in risks if risk.severity == "blocking")
+    if blocking:
+        candidates.append(
+            DashboardAction(
+                code="REPAIR_PROJECT_BLOCKER",
+                priority=10,
+                category="repair",
+                rationale="；".join(risk.message for risk in blocking),
+                expected_artifact="project.yaml / 02-evidence-ledger.yaml",
+                command=report.next_action.command,
+            )
+        )
+    candidates.append(
+        DashboardAction(
+            code="ADVANCE_CURRENT_GATE",
+            priority=20,
+            category="workflow",
+            rationale=report.next_action.reason,
+            expected_artifact=report.next_action.target,
+            command=report.next_action.command,
+        )
+    )
+    if report.method_references:
+        candidates.append(
+            DashboardAction(
+                code="REVIEW_METHOD_GUIDANCE",
+                priority=40,
+                category="methodology",
+                rationale="当前阶段已有可用的方法学来源、手册或报告规范。",
+                expected_artifact="方法学检查记录",
+                command=(
+                    f"research-os kb recommend --project {report.slug} "
+                    "--workspace ."
+                ),
+            )
+        )
+    ordered = sorted(candidates, key=lambda action: (action.priority, action.code))
+    unique: list[DashboardAction] = []
+    seen_commands: set[str] = set()
+    for action in ordered:
+        if action.command in seen_commands:
+            continue
+        seen_commands.add(action.command)
+        unique.append(action)
+    return tuple(unique[:3])
+
+
 def build_project_dashboard(
     workspace: Path,
     slug: str,
@@ -215,23 +280,26 @@ def build_project_dashboard(
     experiment_design = next(
         stage for stage in guide.stages if stage.name == "实验设计"
     )
+    risks = evaluate_dashboard_risks(
+        RiskFacts(
+            stale_source_ids=evidence.stale_or_unknown_source_ids,
+            ledger_issue_codes=tuple(
+                sorted({issue.code for issue in evidence.validation_issues})
+            ),
+            cycle_state=idea.cycle_state,
+            human_decision_required=idea.human_decision_required,
+            profile_domains=profile_domains,
+            profile_tracks=profile_tracks,
+            experiment_design_status=experiment_design.status,
+        )
+    )
     return ProjectDashboard(
         schema_version=1,
         as_of=as_of.isoformat(),
         project=_project_status(guide),
         evidence=evidence,
         idea=idea,
-        risks=evaluate_dashboard_risks(
-            RiskFacts(
-                stale_source_ids=evidence.stale_or_unknown_source_ids,
-                ledger_issue_codes=tuple(
-                    sorted({issue.code for issue in evidence.validation_issues})
-                ),
-                cycle_state=idea.cycle_state,
-                human_decision_required=idea.human_decision_required,
-                profile_domains=profile_domains,
-                profile_tracks=profile_tracks,
-                experiment_design_status=experiment_design.status,
-            )
-        ),
+        recommendations=guide.method_references[:3],
+        risks=risks,
+        actions=_dashboard_actions(guide, risks),
     )
