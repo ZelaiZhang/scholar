@@ -265,6 +265,8 @@ def build_project_dashboard(
     verified_source_ids = registry.verified_source_ids()
     ledger = load_ledger(project / "02-evidence-ledger.yaml")
     guide = guide_project(workspace, slug)
+    if guide.knowledge_issue:
+        raise ValueError(guide.knowledge_issue)
     evidence = _evidence_health(
         ledger,
         linked_source_ids=manifest.source_ids,

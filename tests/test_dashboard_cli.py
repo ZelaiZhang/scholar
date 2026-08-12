@@ -150,3 +150,31 @@ def test_dashboard_malformed_ledger_fails_closed(
     assert code == 2
     assert captured.out == ""
     assert "证据账本 YAML 无法解析" in captured.err
+
+
+def test_dashboard_malformed_knowledge_base_fails_closed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    slug = _project(tmp_path)
+    knowledge = tmp_path / "library" / "knowledge"
+    knowledge.mkdir(parents=True)
+    (knowledge / "catalog.yaml").write_text("entries: [", encoding="utf-8")
+
+    code = main(
+        [
+            "dashboard",
+            "--project",
+            slug,
+            "--workspace",
+            str(tmp_path),
+            "--as-of",
+            "2026-08-12",
+            "--format",
+            "json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert "kb doctor" in captured.err
