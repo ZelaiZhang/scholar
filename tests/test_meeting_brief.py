@@ -264,3 +264,34 @@ def test_completed_idea_keeps_failure_boundary_and_human_reason(
         item.code == "REVIEW_SELECTED_IDEA_BOUNDARY"
         for item in brief.questions
     )
+
+
+def test_meeting_brief_exposes_human_idea_gate_explicitly(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(tmp_path, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+
+    brief = build_meeting_brief(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 12),
+    )
+
+    assert brief.idea_state.run_id == created.run_id
+    assert brief.idea_state.cycle_state == "awaiting_human_decision"
+    assert brief.idea_state.human_decision_required is True
+    assert brief.idea_state.selected_idea_ids == ()
+    assert any(
+        item.code == "REVIEW_IDEA_SHORTLIST"
+        for item in brief.questions
+    )

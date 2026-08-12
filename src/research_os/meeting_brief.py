@@ -75,6 +75,18 @@ class DiscussionQuestion:
 
 
 @dataclass(frozen=True)
+class BriefIdeaState:
+    run_id: str
+    cycle_state: str
+    human_decision_required: bool
+    selected_idea_ids: tuple[str, ...]
+    candidate_generation_complete: bool
+    novelty_check_complete: bool
+    independent_review_complete: bool
+    meta_review_complete: bool
+
+
+@dataclass(frozen=True)
 class MeetingBrief:
     schema_version: int
     as_of: str
@@ -83,6 +95,7 @@ class MeetingBrief:
     conflicted_claims: tuple[BriefClaim, ...]
     open_claims: tuple[BriefClaim, ...]
     excluded_claims: tuple[ExcludedClaim, ...]
+    idea_state: BriefIdeaState
     ideas: tuple[BriefIdea, ...]
     questions: tuple[DiscussionQuestion, ...]
     recommendations: tuple[KnowledgeRecommendation, ...]
@@ -139,6 +152,24 @@ def meeting_brief_payload(brief: MeetingBrief) -> dict[str, object]:
                 }
                 for item in brief.excluded_claims
             ],
+        },
+        "idea_state": {
+            "run_id": brief.idea_state.run_id,
+            "cycle_state": brief.idea_state.cycle_state,
+            "human_decision_required": (
+                brief.idea_state.human_decision_required
+            ),
+            "selected_idea_ids": list(brief.idea_state.selected_idea_ids),
+            "candidate_generation_complete": (
+                brief.idea_state.candidate_generation_complete
+            ),
+            "novelty_check_complete": (
+                brief.idea_state.novelty_check_complete
+            ),
+            "independent_review_complete": (
+                brief.idea_state.independent_review_complete
+            ),
+            "meta_review_complete": brief.idea_state.meta_review_complete,
         },
         "ideas": [
             {
@@ -244,6 +275,11 @@ def render_meeting_brief(brief: MeetingBrief) -> str:
         f"- 课题: `{brief.project.slug}`",
         f"- 截止日期: {brief.as_of}",
         f"- 当前阶段/状态: {brief.project.stage} / {brief.project.state}",
+        (
+            f"- Idea 循环: {brief.idea_state.cycle_state}；"
+            f"人工决策={'需要' if brief.idea_state.human_decision_required else '当前不需要'}；"
+            f"已选={', '.join(brief.idea_state.selected_idea_ids) or '-'}"
+        ),
         "- 边界: 只读、本地、无外部 API；本简报不是临床决策支持。",
         "",
     ]
@@ -617,6 +653,16 @@ def build_meeting_brief(
         ideas=ideas,
     )
     assert_directory_identity(project, project_identity, context="project")
+    idea_state = BriefIdeaState(
+        run_id=snapshot.idea.run_id,
+        cycle_state=snapshot.idea.cycle_state,
+        human_decision_required=snapshot.idea.human_decision_required,
+        selected_idea_ids=snapshot.idea.selected_idea_ids,
+        candidate_generation_complete=snapshot.idea.candidate_generation_complete,
+        novelty_check_complete=snapshot.idea.novelty_check_complete,
+        independent_review_complete=snapshot.idea.independent_review_complete,
+        meta_review_complete=snapshot.idea.meta_review_complete,
+    )
     return MeetingBrief(
         schema_version=1,
         as_of=as_of.isoformat(),
@@ -625,6 +671,7 @@ def build_meeting_brief(
         conflicted_claims=conflicted_tuple,
         open_claims=open_tuple,
         excluded_claims=tuple(excluded),
+        idea_state=idea_state,
         ideas=ideas,
         questions=questions,
         recommendations=snapshot.recommendations,
