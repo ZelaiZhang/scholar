@@ -21,7 +21,12 @@ from research_os.ideas import (
     load_idea_archive,
     save_idea_archive,
 )
-from research_os.io import atomic_create_text, atomic_write_bytes, atomic_write_text
+from research_os.io import (
+    atomic_create_text,
+    atomic_write_bytes,
+    atomic_write_text,
+    read_stable_direct_text,
+)
 from research_os.journal import append_event, validate_journal
 from research_os.project import (
     _is_link_or_reparse_point,
@@ -252,14 +257,23 @@ def _validate_manifest(
         _required_string(getattr(manifest, field), field=field)
 
 
-def load_cycle_manifest(path: Path) -> CycleManifest:
+def load_cycle_manifest(
+    path: Path,
+    *,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> CycleManifest:
     try:
-        if path.stat().st_size > MAX_ARTIFACT_BYTES:
-            raise ValueError("cycle manifest exceeds the 1 MiB limit")
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(
+            read_stable_direct_text(
+                path,
+                expected_parent=path.parent,
+                expected_parent_identity=expected_parent_identity,
+                max_bytes=MAX_ARTIFACT_BYTES,
+            )
+        )
     except OSError as exc:
         raise ValueError(f"cycle manifest cannot be read: {path}") from exc
-    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+    except (UnicodeError, yaml.YAMLError) as exc:
         raise ValueError(f"cycle manifest is malformed: {path}") from exc
     if not isinstance(raw, dict) or set(raw) != MANIFEST_KEYS:
         raise ValueError("cycle manifest fields are invalid")
@@ -803,27 +817,53 @@ def _create_run(
     return run_dir, manifest
 
 
-def _active_run(project: Path) -> tuple[Path, CycleManifest]:
+def _active_run(
+    project: Path,
+    *,
+    expected_project_identity: tuple[int, int] | None = None,
+) -> tuple[Path, CycleManifest]:
+    project_identity = expected_project_identity or _directory_identity(project)
+    _assert_directory_identity(project, project_identity, context="project")
     cycles = _direct_directory(project, "cycles", create=False)
+    cycles_identity = _directory_identity(cycles)
     pointer = cycles / "active-run.txt"
     try:
-        run_id = pointer.read_text(encoding="utf-8").strip()
-    except OSError as exc:
+        run_id = read_stable_direct_text(
+            pointer,
+            expected_parent=cycles,
+            expected_parent_identity=cycles_identity,
+            max_bytes=256,
+        ).strip()
+    except (OSError, UnicodeError, ValueError) as exc:
         raise ValueError("cycle active-run pointer is missing or unreadable") from exc
     if not RUN_ID_PATTERN.fullmatch(run_id):
         raise ValueError("cycle active-run pointer is invalid")
+    _assert_directory_identity(project, project_identity, context="project")
+    _assert_directory_identity(cycles, cycles_identity, context="cycles")
     run_dir = _direct_directory(cycles, run_id, create=False)
-    manifest = load_cycle_manifest(run_dir / "manifest.yaml")
+    run_identity = _directory_identity(run_dir)
+    manifest = load_cycle_manifest(
+        run_dir / "manifest.yaml",
+        expected_parent_identity=run_identity,
+    )
     if manifest.project_slug != project.name:
         raise ValueError("active cycle belongs to a different project")
+    _assert_directory_identity(cycles, cycles_identity, context="cycles")
+    _assert_directory_identity(project, project_identity, context="project")
     return run_dir, manifest
 
 
 def load_active_cycle(
-    workspace: Path, slug: str
+    workspace: Path,
+    slug: str,
+    *,
+    expected_project_identity: tuple[int, int] | None = None,
 ) -> tuple[Path, CycleManifest]:
     project = resolve_project_path(workspace, slug, require_exists=True)
-    return _active_run(project)
+    return _active_run(
+        project,
+        expected_project_identity=expected_project_identity,
+    )
 
 
 def approve_active_cycle_idea(

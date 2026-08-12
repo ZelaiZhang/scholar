@@ -13,6 +13,7 @@ from research_os.knowledge import (
     load_profile,
     load_reporting_applicability,
 )
+from research_os.io import assert_directory_identity, directory_identity
 from research_os.project import (
     _is_link_or_reparse_point,
     resolve_project_path,
@@ -185,13 +186,24 @@ def recommend_for_project(
     slug: str,
     *,
     stage: str,
+    expected_project_identity: tuple[int, int] | None = None,
 ) -> tuple[KnowledgeRecommendation, ...]:
     if stage not in STAGES:
         raise ValueError(f"知识推荐 stage 未受控: {stage}")
     project = resolve_project_path(workspace, slug, require_exists=True)
+    project_identity = expected_project_identity or directory_identity(project)
+    assert_directory_identity(project, project_identity, context="project")
     kb = load_knowledge_base(workspace)
     profile_path = project / "knowledge-profile.yaml"
-    profile = load_profile(profile_path) if profile_path.exists() else None
+    profile = (
+        load_profile(
+            profile_path,
+            expected_parent=project,
+            expected_parent_identity=project_identity,
+        )
+        if profile_path.exists()
+        else None
+    )
     recommendations: list[KnowledgeRecommendation] = []
     method = _select_method_source(kb, profile, stage)
     if method is not None:
@@ -225,4 +237,6 @@ def recommend_for_project(
                 path=None,
             )
         )
-    return tuple(recommendations[:3])
+    result = tuple(recommendations[:3])
+    assert_directory_identity(project, project_identity, context="project")
+    return result

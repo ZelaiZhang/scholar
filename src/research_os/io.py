@@ -26,6 +26,31 @@ def _is_link_or_reparse(metadata: os.stat_result, path: Path) -> bool:
     return path.is_symlink() or bool(reparse_flag and attributes & reparse_flag)
 
 
+def directory_identity(path: Path) -> tuple[int, int]:
+    """Capture the identity of one real directory without following a link."""
+    metadata = path.lstat()
+    if _is_link_or_reparse(metadata, path):
+        raise ValueError(f"directory cannot be a link or reparse point: {path}")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(f"expected a real directory: {path}")
+    return _identity(metadata)
+
+
+def assert_directory_identity(
+    path: Path,
+    expected: tuple[int, int],
+    *,
+    context: str,
+) -> None:
+    """Fail closed when a directory path no longer names the captured object."""
+    try:
+        current = directory_identity(path)
+    except OSError as exc:
+        raise OSError(f"{context} directory is unavailable: {path}") from exc
+    if current != expected:
+        raise OSError(f"{context} directory was replaced or changed: {path}")
+
+
 def read_stable_direct_text(
     path: Path,
     *,

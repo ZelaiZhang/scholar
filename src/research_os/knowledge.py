@@ -287,13 +287,25 @@ def _iso_date(value: object, context: str) -> str:
     return text
 
 
-def _load_yaml(path: Path, context: str) -> dict[str, object]:
+def _load_yaml(
+    path: Path,
+    context: str,
+    *,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> dict[str, object]:
     if _is_link_or_reparse_point(path):
         raise ValueError(f"{context} 不能是符号链接或目录联接: {path}")
     if not path.is_file():
         raise FileNotFoundError(path)
     try:
-        raw = yaml.safe_load(read_stable_direct_text(path))
+        raw = yaml.safe_load(
+            read_stable_direct_text(
+                path,
+                expected_parent=expected_parent,
+                expected_parent_identity=expected_parent_identity,
+            )
+        )
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise ValueError(f"{context} 无法解析: {path}") from exc
     return _mapping(raw, context)
@@ -693,8 +705,18 @@ def load_reporting_applicability(
     return result
 
 
-def load_profile(path: Path) -> KnowledgeProfile:
-    raw = _load_yaml(path, "knowledge profile")
+def load_profile(
+    path: Path,
+    *,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> KnowledgeProfile:
+    raw = _load_yaml(
+        path,
+        "knowledge profile",
+        expected_parent=expected_parent,
+        expected_parent_identity=expected_parent_identity,
+    )
     _exact_keys(raw, PROFILE_KEYS, "knowledge profile")
     if raw["schema_version"] != SCHEMA_VERSION:
         raise ValueError(f"knowledge profile schema_version 必须为 {SCHEMA_VERSION}")

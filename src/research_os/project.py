@@ -9,7 +9,11 @@ from pathlib import Path
 
 import yaml
 
-from research_os.io import atomic_write_text, read_stable_direct_text
+from research_os.io import (
+    assert_directory_identity,
+    atomic_write_text,
+    read_stable_direct_text,
+)
 from research_os.sources import SOURCE_ID_PATTERN
 
 
@@ -128,9 +132,18 @@ def write_project_manifest(
 
 
 def load_project_manifest(
-    project_path: Path, *, allow_legacy: bool = False
+    project_path: Path,
+    *,
+    allow_legacy: bool = False,
+    expected_directory_identity: tuple[int, int] | None = None,
 ) -> ProjectManifest:
     project_path = project_path.resolve()
+    if expected_directory_identity is not None:
+        assert_directory_identity(
+            project_path,
+            expected_directory_identity,
+            context="project",
+        )
     path = _manifest_path(project_path)
     if not path.exists():
         if not allow_legacy:
@@ -138,10 +151,15 @@ def load_project_manifest(
         brief = project_path / "00-research-brief.md"
         if not brief.is_file():
             raise FileNotFoundError(brief)
+        brief_text = read_stable_direct_text(
+            brief,
+            expected_parent=project_path,
+            expected_parent_identity=expected_directory_identity,
+        )
         first_heading = next(
             (
                 line[2:].strip()
-                for line in brief.read_text(encoding="utf-8").splitlines()
+                for line in brief_text.splitlines()
                 if line.startswith("# ") and line[2:].strip()
             ),
             project_path.name,
@@ -152,7 +170,11 @@ def load_project_manifest(
 
     try:
         raw = yaml.safe_load(
-            read_stable_direct_text(path, expected_parent=project_path)
+            read_stable_direct_text(
+                path,
+                expected_parent=project_path,
+                expected_parent_identity=expected_directory_identity,
+            )
         )
     except yaml.YAMLError as exc:
         raise ValueError(f"课题元数据 YAML 无法解析: {path}: {exc}") from exc

@@ -323,10 +323,20 @@ def _validate_archive(
 
 
 def load_idea_archive(
-    path: Path, *, allowed_source_ids: set[str] | None = None
+    path: Path,
+    *,
+    allowed_source_ids: set[str] | None = None,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
 ) -> IdeaArchive:
     try:
-        raw = yaml.safe_load(read_stable_direct_text(path))
+        raw = yaml.safe_load(
+            read_stable_direct_text(
+                path,
+                expected_parent=expected_parent,
+                expected_parent_identity=expected_parent_identity,
+            )
+        )
     except yaml.YAMLError as exc:
         raise ValueError(f"Idea archive YAML 损坏: {path}") from exc
     if not isinstance(raw, dict):

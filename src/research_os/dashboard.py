@@ -13,6 +13,7 @@ from research_os.dashboard_risks import (
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.guidance import GuideReport, guide_project
 from research_os.ideas import load_idea_archive
+from research_os.io import assert_directory_identity, directory_identity
 from research_os.knowledge import load_profile
 from research_os.knowledge_recommend import KnowledgeRecommendation
 from research_os.project import (
@@ -223,7 +224,13 @@ def _idea_status(
     *,
     slug: str,
     allowed_source_ids: set[str],
+    expected_project_identity: tuple[int, int],
 ) -> IdeaStatus:
+    assert_directory_identity(
+        project,
+        expected_project_identity,
+        context="project",
+    )
     if not (project / "cycles").exists():
         return IdeaStatus(
             run_id="",
@@ -238,16 +245,33 @@ def _idea_status(
             independent_review_complete=False,
             meta_review_complete=False,
         )
-    run_dir, manifest = load_active_cycle(workspace, slug)
+    run_dir, manifest = load_active_cycle(
+        workspace,
+        slug,
+        expected_project_identity=expected_project_identity,
+    )
+    assert_directory_identity(
+        project,
+        expected_project_identity,
+        context="project",
+    )
     ideas = _safe_direct_directory(project, "ideas", required=True)
     if ideas is None:
         raise FileNotFoundError(project / "ideas")
     archive_path = _safe_direct_file(ideas, "archive.yaml", required=True)
     if archive_path is None:
         raise FileNotFoundError(ideas / "archive.yaml")
+    ideas_identity = directory_identity(ideas)
+    assert_directory_identity(
+        project,
+        expected_project_identity,
+        context="project",
+    )
     archive = load_idea_archive(
         archive_path,
         allowed_source_ids=allowed_source_ids,
+        expected_parent=ideas,
+        expected_parent_identity=ideas_identity,
     )
     if archive.project_slug != slug:
         raise ValueError(
@@ -264,6 +288,11 @@ def _idea_status(
         raise ValueError(
             "科研循环产物校验失败: " + "; ".join(artifact_issues)
         )
+    assert_directory_identity(
+        project,
+        expected_project_identity,
+        context="project",
+    )
     active_ideas = tuple(
         idea for idea in archive.ideas if idea.generated_by_run == manifest.run_id
     )
@@ -294,7 +323,16 @@ def _idea_status(
     )
 
 
-def _profile_facts(project: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _profile_facts(
+    project: Path,
+    *,
+    expected_project_identity: tuple[int, int],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    assert_directory_identity(
+        project,
+        expected_project_identity,
+        context="project",
+    )
     path = _safe_direct_file(
         project,
         "knowledge-profile.yaml",
@@ -302,7 +340,11 @@ def _profile_facts(project: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     )
     if path is None:
         return (), ()
-    profile = load_profile(path)
+    profile = load_profile(
+        path,
+        expected_parent=project,
+        expected_parent_identity=expected_project_identity,
+    )
     return profile.domains, profile.tracks
 
 
@@ -368,13 +410,27 @@ def build_project_dashboard(
         raise TypeError("as_of must be a date")
     workspace = workspace.resolve()
     project = resolve_project_path(workspace, slug, require_exists=True)
+    project_identity = directory_identity(project)
     _preflight_project_inputs(project)
-    manifest = load_project_manifest(project, allow_legacy=True)
+    assert_directory_identity(project, project_identity, context="project")
+    manifest = load_project_manifest(
+        project,
+        allow_legacy=True,
+        expected_directory_identity=project_identity,
+    )
     library = resolve_workspace_directory(workspace, "library")
     registry = SourceRegistry(library / "sources.jsonl")
     verified_source_ids = registry.verified_source_ids()
-    ledger = load_ledger(project / "02-evidence-ledger.yaml")
-    guide = guide_project(workspace, slug)
+    ledger = load_ledger(
+        project / "02-evidence-ledger.yaml",
+        expected_parent=project,
+        expected_parent_identity=project_identity,
+    )
+    guide = guide_project(
+        workspace,
+        slug,
+        expected_project_identity=project_identity,
+    )
     if guide.knowledge_issue:
         raise ValueError(guide.knowledge_issue)
     evidence = _evidence_health(
@@ -387,8 +443,12 @@ def build_project_dashboard(
         project,
         slug=slug,
         allowed_source_ids=set(manifest.source_ids),
+        expected_project_identity=project_identity,
     )
-    profile_domains, profile_tracks = _profile_facts(project)
+    profile_domains, profile_tracks = _profile_facts(
+        project,
+        expected_project_identity=project_identity,
+    )
     experiment_design = next(
         stage for stage in guide.stages if stage.name == "实验设计"
     )
@@ -405,7 +465,7 @@ def build_project_dashboard(
             experiment_design_status=experiment_design.status,
         )
     )
-    return ProjectDashboard(
+    dashboard = ProjectDashboard(
         schema_version=1,
         as_of=as_of.isoformat(),
         project=_project_status(guide),
@@ -415,3 +475,5 @@ def build_project_dashboard(
         risks=risks,
         actions=_dashboard_actions(guide, risks),
     )
+    assert_directory_identity(project, project_identity, context="project")
+    return dashboard

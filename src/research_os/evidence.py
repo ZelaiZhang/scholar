@@ -24,9 +24,20 @@ class ValidationIssue:
     message: str
 
 
-def load_ledger(path: Path) -> dict[str, object]:
+def load_ledger(
+    path: Path,
+    *,
+    expected_parent: Path | None = None,
+    expected_parent_identity: tuple[int, int] | None = None,
+) -> dict[str, object]:
     try:
-        loaded = yaml.safe_load(read_stable_direct_text(path))
+        loaded = yaml.safe_load(
+            read_stable_direct_text(
+                path,
+                expected_parent=expected_parent,
+                expected_parent_identity=expected_parent_identity,
+            )
+        )
     except yaml.YAMLError as exc:
         raise LedgerFormatError(f"证据账本 YAML 无法解析: {exc}") from exc
     if not isinstance(loaded, dict):

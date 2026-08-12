@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from dataclasses import replace
 from datetime import date
@@ -682,6 +683,73 @@ def test_dashboard_rechecks_ledger_at_read_time_after_preflight(
     )
 
     with pytest.raises(ValueError, match="符号链接|目录联接"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+
+def test_dashboard_rejects_same_name_project_directory_replacement_before_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    moved = tmp_path / "moved-project"
+    original_preflight = dashboard_module._preflight_project_inputs
+    original_loader = dashboard_module.load_project_manifest
+    loader_called_after_replacement = False
+
+    def replace_after_preflight(project_path: Path) -> None:
+        original_preflight(project_path)
+        project_path.rename(moved)
+        shutil.copytree(moved, project_path)
+
+    def tracked_loader(*args: object, **kwargs: object):
+        nonlocal loader_called_after_replacement
+        loader_called_after_replacement = True
+        return original_loader(*args, **kwargs)
+
+    monkeypatch.setattr(
+        dashboard_module,
+        "_preflight_project_inputs",
+        replace_after_preflight,
+    )
+    monkeypatch.setattr(
+        dashboard_module,
+        "load_project_manifest",
+        tracked_loader,
+    )
+
+    with pytest.raises(OSError):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
+
+    assert loader_called_after_replacement is False
+
+
+def test_dashboard_rejects_project_directory_replacement_after_manifest_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    moved = tmp_path / "moved-project-after-manifest"
+    original_loader = dashboard_module.load_project_manifest
+
+    def replace_after_manifest(*args: object, **kwargs: object):
+        manifest = original_loader(*args, **kwargs)
+        project.rename(moved)
+        shutil.copytree(moved, project)
+        return manifest
+
+    monkeypatch.setattr(
+        dashboard_module,
+        "load_project_manifest",
+        replace_after_manifest,
+    )
+
+    with pytest.raises(OSError):
         build_project_dashboard(
             tmp_path,
             project.name,

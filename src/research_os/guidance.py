@@ -13,6 +13,11 @@ from research_os.project import (
 from research_os.sources import SourceRegistry
 from research_os.cycle import CycleManifest, load_active_cycle
 from research_os.ideas import load_idea_archive
+from research_os.io import (
+    assert_directory_identity,
+    directory_identity,
+    read_stable_direct_text,
+)
 from research_os.knowledge_recommend import (
     KnowledgeRecommendation,
     recommend_for_project,
@@ -55,11 +60,16 @@ def _document_progress(
     template_name: str,
     title: str,
     completion_marker: str,
+    expected_project_identity: tuple[int, int],
 ) -> str:
     path = project_path / filename
     if not path.is_file():
         return "blocked"
-    actual = path.read_text(encoding="utf-8")
+    actual = read_stable_direct_text(
+        path,
+        expected_parent=project_path,
+        expected_parent_identity=expected_project_identity,
+    )
     expected = template_content(template_name, None).replace(
         "{{PROJECT_TITLE}}", title
     )
@@ -155,10 +165,21 @@ def _knowledge_stage(next_action: NextAction) -> str:
     return "problem-definition"
 
 
-def guide_project(workspace: Path, slug: str) -> GuideReport:
+def guide_project(
+    workspace: Path,
+    slug: str,
+    *,
+    expected_project_identity: tuple[int, int] | None = None,
+) -> GuideReport:
     workspace = workspace.resolve()
     project_path = resolve_project_path(workspace, slug, require_exists=True)
-    manifest = load_project_manifest(project_path, allow_legacy=True)
+    project_identity = expected_project_identity or directory_identity(project_path)
+    assert_directory_identity(project_path, project_identity, context="project")
+    manifest = load_project_manifest(
+        project_path,
+        allow_legacy=True,
+        expected_directory_identity=project_identity,
+    )
     library_root = resolve_workspace_directory(workspace, "library")
     registry = SourceRegistry(library_root / "sources.jsonl")
     globally_verified_source_ids = registry.verified_source_ids()
@@ -173,7 +194,11 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
     ledger: dict[str, object] = {"claims": []}
     ledger_issues = []
     try:
-        ledger = load_ledger(project_path / "02-evidence-ledger.yaml")
+        ledger = load_ledger(
+            project_path / "02-evidence-ledger.yaml",
+            expected_parent=project_path,
+            expected_parent_identity=project_identity,
+        )
         ledger_issues = validate_ledger(
             ledger, known_source_ids=known_source_ids
         )
@@ -186,6 +211,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         "research-brief.md",
         manifest.title,
         "brief-complete",
+        project_identity,
     )
     brief_ready = brief_progress == "complete"
     paper_card_count = _linked_paper_card_count(
@@ -199,6 +225,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         "literature-review.md",
         manifest.title,
         "synthesis-complete",
+        project_identity,
     )
     literature_ready = literature_progress == "complete"
     idea_progress = _document_progress(
@@ -207,6 +234,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         "idea-candidates.md",
         manifest.title,
         "idea-complete",
+        project_identity,
     )
     legacy_idea_ready = idea_progress == "complete"
     cycle_manifest: CycleManifest | None = None
@@ -214,10 +242,23 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
     selected_idea_ids: tuple[str, ...] = ()
     if (project_path / "cycles").exists():
         try:
-            _run_dir, cycle_manifest = load_active_cycle(workspace, slug)
+            _run_dir, cycle_manifest = load_active_cycle(
+                workspace,
+                slug,
+                expected_project_identity=project_identity,
+            )
+            ideas_path = project_path / "ideas"
+            ideas_identity = directory_identity(ideas_path)
+            assert_directory_identity(
+                project_path,
+                project_identity,
+                context="project",
+            )
             archive = load_idea_archive(
-                project_path / "ideas" / "archive.yaml",
+                ideas_path / "archive.yaml",
                 allowed_source_ids=set(manifest.source_ids),
+                expected_parent=ideas_path,
+                expected_parent_identity=ideas_identity,
             )
             selected_idea_ids = tuple(
                 idea.idea_id
@@ -240,6 +281,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         "experiment-design.md",
         manifest.title,
         "design-complete",
+        project_identity,
     )
     design_ready = design_progress == "complete"
     result_progress = _document_progress(
@@ -248,6 +290,7 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         "result-analysis.md",
         manifest.title,
         "result-complete",
+        project_identity,
     )
     result_ready = result_progress == "complete"
     result_inputs = _result_inputs(project_path)
@@ -508,12 +551,13 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
                 workspace,
                 slug,
                 stage=_knowledge_stage(next_action),
+                expected_project_identity=project_identity,
             )
         except (OSError, UnicodeError, ValueError) as exc:
             knowledge_issue = (
                 f"方法学知识库受阻：{exc}。运行 research-os kb doctor --workspace ."
             )
-    return GuideReport(
+    report = GuideReport(
         manifest.title,
         manifest.slug,
         stages,
@@ -521,6 +565,8 @@ def guide_project(workspace: Path, slug: str) -> GuideReport:
         method_references,
         knowledge_issue,
     )
+    assert_directory_identity(project_path, project_identity, context="project")
+    return report
 
 
 def render_guide(report: GuideReport) -> str:
