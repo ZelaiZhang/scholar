@@ -295,3 +295,45 @@ def test_meeting_brief_exposes_human_idea_gate_explicitly(
         item.code == "REVIEW_IDEA_SHORTLIST"
         for item in brief.questions
     )
+
+
+def test_meeting_brief_rejects_same_run_approval_after_dashboard_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    created = advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(tmp_path, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(tmp_path, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(tmp_path, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(tmp_path, project.name).state == "awaiting_human_decision"
+
+    real_build_dashboard = meeting_brief_module.build_project_dashboard
+
+    def approve_after_snapshot(*args: object, **kwargs: object) -> object:
+        snapshot = real_build_dashboard(*args, **kwargs)
+        approve_active_cycle_idea(
+            tmp_path,
+            project.name,
+            "idea-0001",
+            reason="Approved while the meeting brief was being built.",
+        )
+        return snapshot
+
+    monkeypatch.setattr(
+        meeting_brief_module,
+        "build_project_dashboard",
+        approve_after_snapshot,
+    )
+
+    with pytest.raises(ValueError, match="active cycle changed"):
+        build_meeting_brief(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )

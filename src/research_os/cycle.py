@@ -6,7 +6,7 @@ import os
 import re
 import secrets
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -92,6 +92,24 @@ class CycleAction:
     target: Path | None
     reason: str
     manifest: CycleManifest
+
+
+def cycle_snapshot_token(
+    manifest: CycleManifest,
+    archive: IdeaArchive,
+) -> str:
+    """Fingerprint the complete cycle and Idea state used by a read model."""
+    payload = {
+        "manifest": asdict(manifest),
+        "idea_archive": asdict(archive),
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _utc_now() -> str:

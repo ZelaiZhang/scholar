@@ -7,10 +7,15 @@ from pathlib import Path
 from research_os.dashboard import (
     DashboardAction,
     DashboardRisk,
+    IdeaStatus,
     ProjectStatus,
     build_project_dashboard,
 )
-from research_os.cycle import load_active_cycle, validate_cycle_artifacts
+from research_os.cycle import (
+    cycle_snapshot_token,
+    load_active_cycle,
+    validate_cycle_artifacts,
+)
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.ideas import load_idea_archive
 from research_os.io import assert_directory_identity, directory_identity
@@ -405,9 +410,9 @@ def _active_ideas(
     slug: str,
     source_ids: set[str],
     project_identity: tuple[int, int],
-    expected_run_id: str,
+    expected: IdeaStatus,
 ) -> tuple[BriefIdea, ...]:
-    if not expected_run_id:
+    if not expected.run_id:
         return ()
     assert_directory_identity(project, project_identity, context="project")
     run_dir, manifest = load_active_cycle(
@@ -415,10 +420,10 @@ def _active_ideas(
         slug,
         expected_project_identity=project_identity,
     )
-    if manifest.run_id != expected_run_id:
+    if manifest.run_id != expected.run_id:
         raise ValueError(
             "active cycle changed while building meeting brief: "
-            f"expected {expected_run_id}, found {manifest.run_id}"
+            f"expected {expected.run_id}, found {manifest.run_id}"
         )
     ideas_path = project / "ideas"
     if ideas_path.resolve().parent != project:
@@ -447,19 +452,23 @@ def _active_ideas(
             "meeting brief cycle artifact validation failed: "
             + "; ".join(artifact_issues)
         )
+    if cycle_snapshot_token(manifest, archive) != expected.snapshot_token:
+        raise ValueError(
+            "active cycle changed while building meeting brief; regenerate the brief"
+        )
     assert_directory_identity(project, project_identity, context="project")
     records = sorted(
         (
             idea
             for idea in archive.ideas
-            if idea.generated_by_run == expected_run_id
+            if idea.generated_by_run == expected.run_id
             and idea.status != "rejected"
         ),
         key=lambda idea: idea.idea_id,
     )[:4]
     return tuple(
         BriefIdea(
-            run_id=expected_run_id,
+            run_id=expected.run_id,
             idea_id=idea.idea_id,
             title=idea.title,
             scientific_question=idea.scientific_question,
@@ -639,7 +648,7 @@ def build_meeting_brief(
         slug=slug,
         source_ids=set(manifest.source_ids),
         project_identity=project_identity,
-        expected_run_id=snapshot.idea.run_id,
+        expected=snapshot.idea,
     )
     supported_tuple = tuple(supported)
     conflicted_tuple = tuple(conflicted)

@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from research_os.cycle import load_active_cycle, validate_cycle_artifacts
+from research_os.cycle import (
+    cycle_snapshot_token,
+    load_active_cycle,
+    validate_cycle_artifacts,
+)
 from research_os.dashboard_risks import (
     DashboardRisk,
     RiskFacts,
@@ -51,6 +55,7 @@ class EvidenceHealth:
 class IdeaStatus:
     run_id: str
     cycle_state: str
+    snapshot_token: str
     candidate_count: int
     selected_idea_ids: tuple[str, ...]
     human_decision_required: bool
@@ -235,6 +240,7 @@ def _idea_status(
         return IdeaStatus(
             run_id="",
             cycle_state="not_started",
+            snapshot_token="",
             candidate_count=0,
             selected_idea_ids=(),
             human_decision_required=False,
@@ -311,6 +317,7 @@ def _idea_status(
     return IdeaStatus(
         run_id=manifest.run_id,
         cycle_state=manifest.state,
+        snapshot_token=cycle_snapshot_token(manifest, archive),
         candidate_count=len(active_ideas),
         selected_idea_ids=selected,
         human_decision_required=manifest.state == "awaiting_human_decision",
