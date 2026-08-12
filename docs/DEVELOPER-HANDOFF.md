@@ -44,7 +44,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 
-截至本文档更新，v0.6.0 完整测试为 `287 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
+截至本文档更新，v0.6.0 完整测试为 `290 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
 
 ## 3. 系统总览
 
@@ -404,6 +404,7 @@ git diff --check
 | `b3567bf` | 简报绑定完整 cycle 与 Idea archive 快照 |
 | `da7b794` | cycle 评审产物的直接文件与目录身份校验 |
 | `3957288` | dashboard 到简报之间贯穿 cycle 产物身份向量 |
+| `03cbe1a` | manifest 与 Idea archive 身份绑定及末尾稳定复读 |
 
 ## 15. 已知限制与技术债
 
@@ -480,7 +481,7 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 8. 导师问题按阻塞、人工 Idea 决策、证据冲突/缺口和方法风险排序，最多三个；行动直接复用 dashboard 的安全命令，最多三个；
 9. Markdown/JSON 输出稳定，只写 stdout；固定 `--as-of` 且工作区字节不变时输出一致。
 10. dashboard 与简报二次读取之间以完整 cycle manifest 和 Idea archive 内容指纹绑定；审批、状态或候选内容中途变化时拒绝混合快照并要求重生成。
-11. candidates、三份独立评审和 meta-review 必须来自 active run 下的真实直接文件；run、reviews 目录及各产物的身份向量会跨 dashboard 和简报二次读取贯穿，目录联接、reparse point、同内容替换和读取期间的同名目录替换都会失败关闭。
+11. manifest、Idea archive、candidates、三份独立评审和 meta-review 必须来自真实直接文件；run、reviews 目录及各状态/产物的身份向量会跨 dashboard 和简报二次读取贯穿，并在输出前稳定复读，目录联接、reparse point、同内容替换和读取期间的同名目录替换都会失败关闭。
 
 命令示例：
 
