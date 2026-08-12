@@ -10,6 +10,7 @@ from research_os.sources import (
     authorize_external_files,
     authorize_external_sources,
     load_authorized_external_texts,
+    load_source_manifest,
     normalize_source,
 )
 
@@ -195,3 +196,49 @@ def test_verified_source_ids_exclude_changed_or_missing_local_files(
 
     paper.unlink()
     assert record.source_id not in registry.verified_source_ids()
+
+
+def test_source_manifest_supports_comments_and_relative_files(
+    tmp_path: Path,
+) -> None:
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(b"public paper")
+    manifest = tmp_path / "sources.txt"
+    manifest.write_text(
+        "# seed\n\n./paper.pdf\ndoi:10.1000/ABC\n", encoding="utf-8"
+    )
+
+    values = load_source_manifest(manifest)
+
+    assert values == [paper.resolve().as_posix(), "doi:10.1000/ABC"]
+
+
+def test_add_many_is_atomic_when_one_source_is_invalid(tmp_path: Path) -> None:
+    registry_path = tmp_path / "library" / "sources.jsonl"
+    registry = SourceRegistry(registry_path)
+    registry.add("doi:10.1000/existing")
+    before = registry_path.read_bytes()
+
+    with pytest.raises(InvalidSourceError):
+        registry.add_many(["doi:10.1000/good", "missing.pdf"])
+
+    assert registry_path.read_bytes() == before
+
+
+def test_add_many_reports_added_duplicate_and_authorization_upgrade(
+    tmp_path: Path,
+) -> None:
+    registry = SourceRegistry(tmp_path / "library" / "sources.jsonl")
+    registry.add("doi:10.1000/existing")
+
+    result = registry.add_many(
+        ["doi:10.1000/existing", "doi:10.1000/new", "doi:10.1000/new"],
+        external_api_allowed=True,
+    )
+
+    assert (
+        result.added,
+        result.duplicates,
+        result.authorizations_upgraded,
+    ) == (1, 2, 1)
+    assert len(registry.records()) == 2

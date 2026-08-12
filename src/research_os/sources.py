@@ -31,6 +31,14 @@ class SourceRecord:
     metadata_status: str = "unverified"
 
 
+@dataclass(frozen=True)
+class BatchAddResult:
+    records: tuple[SourceRecord, ...]
+    added: int
+    duplicates: int
+    authorizations_upgraded: int
+
+
 DOI_PATTERN = re.compile(
     r"^(?:(?:doi:)\s*|https?://(?:dx\.)?doi\.org/)(10\.\d{4,9}/\S+)$",
     re.IGNORECASE,
@@ -93,6 +101,49 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_source_manifest(path: Path) -> list[str]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    values: list[str] = []
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute() and not value.lower().startswith(
+            ("doi:", "arxiv:", "http://", "https://")
+        ):
+            candidate = path.parent / candidate
+            value = candidate.resolve().as_posix()
+        try:
+            normalize_source(value)
+        except InvalidSourceError as exc:
+            raise InvalidSourceError(f"{path}:{line_number}: {exc}") from exc
+        values.append(value)
+    if not values:
+        raise InvalidSourceError(f"来源清单没有可导入条目: {path}")
+    return values
+
+
+def _candidate_record(
+    value: str, *, notes: str, external_api_allowed: bool
+) -> SourceRecord:
+    kind, canonical = normalize_source(value)
+    content_hash = hash_file(Path(canonical)) if kind == "file" else None
+    identity = content_hash if content_hash is not None else canonical
+    return SourceRecord(
+        source_id=make_source_id(kind, identity),
+        kind=kind,
+        canonical=canonical,
+        imported_at=datetime.now(timezone.utc).isoformat(),
+        content_hash=content_hash,
+        notes=notes,
+        external_api_allowed=external_api_allowed,
+    )
+
+
 class SourceRegistry:
     def __init__(self, path: Path):
         self.path = path
@@ -146,31 +197,63 @@ class SourceRegistry:
         notes: str = "",
         external_api_allowed: bool = False,
     ) -> SourceRecord:
-        kind, canonical = normalize_source(value)
-        content_hash = hash_file(Path(canonical)) if kind == "file" else None
-        identity = content_hash if content_hash is not None else canonical
-        identifier = make_source_id(kind, identity)
-        records = self._read()
-        for index, record in enumerate(records):
-            if record.source_id == identifier:
-                if external_api_allowed and not record.external_api_allowed:
-                    record = replace(record, external_api_allowed=True)
-                    records[index] = record
-                    self._write(records)
-                return record
-
-        record = SourceRecord(
-            source_id=identifier,
-            kind=kind,
-            canonical=canonical,
-            imported_at=datetime.now(timezone.utc).isoformat(),
-            content_hash=content_hash,
+        return self.add_many(
+            [value],
             notes=notes,
             external_api_allowed=external_api_allowed,
+        ).records[0]
+
+    def add_many(
+        self,
+        values: list[str],
+        *,
+        notes: str = "",
+        external_api_allowed: bool = False,
+    ) -> BatchAddResult:
+        if not values:
+            raise InvalidSourceError("批量来源不能为空")
+        candidates = [
+            _candidate_record(
+                value,
+                notes=notes,
+                external_api_allowed=external_api_allowed,
+            )
+            for value in values
+        ]
+        records = self._read()
+        indexes = {
+            record.source_id: index for index, record in enumerate(records)
+        }
+        returned: list[SourceRecord] = []
+        added = 0
+        duplicates = 0
+        upgraded = 0
+        changed = False
+        for candidate in candidates:
+            index = indexes.get(candidate.source_id)
+            if index is None:
+                indexes[candidate.source_id] = len(records)
+                records.append(candidate)
+                returned.append(candidate)
+                added += 1
+                changed = True
+                continue
+            duplicates += 1
+            existing = records[index]
+            if external_api_allowed and not existing.external_api_allowed:
+                existing = replace(existing, external_api_allowed=True)
+                records[index] = existing
+                upgraded += 1
+                changed = True
+            returned.append(existing)
+        if changed:
+            self._write(records)
+        return BatchAddResult(
+            records=tuple(returned),
+            added=added,
+            duplicates=duplicates,
+            authorizations_upgraded=upgraded,
         )
-        records.append(record)
-        self._write(records)
-        return record
 
 
 def authorize_external_sources(
