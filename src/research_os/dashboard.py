@@ -233,6 +233,11 @@ def _idea_status(
         archive_path,
         allowed_source_ids=allowed_source_ids,
     )
+    if archive.project_slug != slug:
+        raise ValueError(
+            "Idea archive 属于不同课题: "
+            f"expected {slug}, found {archive.project_slug}"
+        )
     active_ideas = tuple(
         idea for idea in archive.ideas if idea.generated_by_run == manifest.run_id
     )

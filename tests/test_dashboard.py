@@ -530,3 +530,25 @@ def test_dashboard_excludes_invalid_claim_from_healthy_counts(
     assert snapshot.evidence.opposition_links == 0
     assert snapshot.evidence.conflicted_claims == 0
     assert snapshot.evidence.claims_with_limitations == 0
+
+
+def test_dashboard_rejects_idea_archive_from_another_project(
+    tmp_path: Path,
+) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    advance_cycle(tmp_path, project.name)
+    archive = project / "ideas" / "archive.yaml"
+    archive.write_text(
+        archive.read_text(encoding="utf-8").replace(
+            f"project_slug: {project.name}",
+            "project_slug: another-project",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Idea archive.*another-project|不同课题"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
