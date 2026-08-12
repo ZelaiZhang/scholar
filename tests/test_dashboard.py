@@ -500,3 +500,33 @@ def test_dashboard_rejects_idea_directory_link(tmp_path: Path) -> None:
             project.name,
             as_of=date(2026, 8, 12),
         )
+
+
+def test_dashboard_excludes_invalid_claim_from_healthy_counts(
+    tmp_path: Path,
+) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+    ledger = project / "02-evidence-ledger.yaml"
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8").replace(
+            "statement: 论文报告了公开任务结果",
+            "statement: ''",
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = build_project_dashboard(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 12),
+    )
+
+    assert any(
+        issue.code == "missing_statement"
+        for issue in snapshot.evidence.validation_issues
+    )
+    assert snapshot.evidence.claims == 0
+    assert snapshot.evidence.support_links == 0
+    assert snapshot.evidence.opposition_links == 0
+    assert snapshot.evidence.conflicted_claims == 0
+    assert snapshot.evidence.claims_with_limitations == 0

@@ -176,9 +176,18 @@ def _evidence_health(
 ) -> EvidenceHealth:
     known_ids = set(linked_source_ids) & verified_source_ids
     issues = tuple(validate_ledger(ledger, known_source_ids=known_ids))
+    invalid_claim_ids = {issue.claim_id for issue in issues}
     raw_claims = ledger.get("claims", [])
     claims = raw_claims if isinstance(raw_claims, list) else []
-    mappings = [claim for claim in claims if isinstance(claim, dict)]
+    mappings = [
+        claim
+        for index, claim in enumerate(claims, 1)
+        if isinstance(claim, dict)
+        and (
+            str(claim.get("claim_id", "")).strip() or f"item-{index}"
+        )
+        not in invalid_claim_ids
+    ]
     return EvidenceHealth(
         linked_sources=len(linked_source_ids),
         verified_sources=len(known_ids),
