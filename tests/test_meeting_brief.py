@@ -1,3 +1,4 @@
+import json
 import shutil
 from datetime import date
 from pathlib import Path
@@ -5,6 +6,14 @@ from pathlib import Path
 import pytest
 
 import research_os.meeting_brief as meeting_brief_module
+from research_os.cycle import advance_cycle, approve_active_cycle_idea
+from research_os.ideas import (
+    IdeaArchive,
+    IdeaRecord,
+    IdeaScores,
+    NoveltyEvidence,
+    save_idea_archive,
+)
 from research_os.meeting_brief import build_meeting_brief
 from research_os.project import create_project, link_project_sources
 from research_os.sources import SourceRegistry
@@ -79,6 +88,112 @@ claims:
     )
 
 
+def _candidate(run_id: str, source_id: str, *, checked: bool) -> IdeaRecord:
+    return IdeaRecord(
+        idea_id="idea-0001",
+        parent_ids=(),
+        title="反证约束的医疗推理",
+        scientific_question="显式反证门禁能否减少不受支持的诊断结论？",
+        hypothesis="反证门禁将减少不受支持的诊断结论。",
+        contribution="一种可证伪的医疗诊断推理证据门禁。",
+        evidence_source_ids=(source_id,),
+        novelty=NoveltyEvidence(
+            status="checked" if checked else "pending",
+            queries=("counterevidence medical diagnosis reasoning",) if checked else (),
+            nearest_source_ids=(source_id,) if checked else (),
+            differences="显式检查反证。" if checked else "",
+            unresolved_overlap="" if checked else "需要检索。",
+        ),
+        scores=IdeaScores(8, 7, 7, 6),
+        method_risks=("评价泄漏",),
+        medical_safety_risks=("不能主张临床效用",),
+        failure_criterion="Unsupported conclusions do not decrease.",
+        external_experiment="只在独立公开基准仓库中比较。",
+        status="draft",
+        generated_by_run=run_id,
+        provenance={"fixture": "meeting-brief"},
+        researcher_decision=None,
+    )
+
+
+def _write_candidates(
+    project: Path, run_id: str, source_id: str, *, checked: bool
+) -> None:
+    save_idea_archive(
+        project / "cycles" / run_id / "candidates.yaml",
+        IdeaArchive(
+            1,
+            project.name,
+            (_candidate(run_id, source_id, checked=checked),),
+        ),
+    )
+
+
+def _write_reviews(project: Path, run_id: str) -> None:
+    reviews = project / "cycles" / run_id / "reviews"
+    reviews.mkdir()
+    assessment = {
+        "idea_id": "idea-0001",
+        "strengths": ["问题可证伪"],
+        "concerns": ["必须限定为公开基准"],
+        "blocking_issues": [],
+        "recommendation": "advance",
+        "confidence": 4,
+    }
+    for role in ("novelty", "methods", "medical-safety"):
+        (reviews / f"{role}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "run_id": run_id,
+                    "role": role,
+                    "assessments": [assessment],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+
+def _write_meta_review(project: Path, run_id: str) -> None:
+    (project / "cycles" / run_id / "meta-review.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "consensus": ["问题可检验。"],
+                "conflicts": [],
+                "blocking_issues": [],
+                "shortlist_ids": ["idea-0001"],
+                "rationale_by_idea": {"idea-0001": "证据和成本权衡最好。"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _advance_and_approve_one_idea(
+    workspace: Path, project: Path, source_id: str
+) -> str:
+    created = advance_cycle(workspace, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=False)
+    advance_cycle(workspace, project.name)
+    _write_candidates(project, created.run_id, source_id, checked=True)
+    advance_cycle(workspace, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(workspace, project.name)
+    _write_meta_review(project, created.run_id)
+    assert advance_cycle(workspace, project.name).state == "awaiting_human_decision"
+    approve_active_cycle_idea(
+        workspace,
+        project.name,
+        "idea-0001",
+        reason="Evidence and cost are acceptable.",
+    )
+    return created.run_id
+
+
 def test_meeting_brief_routes_claims_without_promoting_invalid_evidence(
     tmp_path: Path,
 ) -> None:
@@ -125,3 +240,27 @@ def test_meeting_brief_rejects_project_replacement_after_dashboard(
             project.name,
             as_of=date(2026, 8, 12),
         )
+
+
+def test_completed_idea_keeps_failure_boundary_and_human_reason(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    run_id = _advance_and_approve_one_idea(tmp_path, project, source_id)
+
+    brief = build_meeting_brief(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 12),
+    )
+
+    assert brief.ideas[0].run_id == run_id
+    assert brief.ideas[0].failure_criterion == (
+        "Unsupported conclusions do not decrease."
+    )
+    assert brief.ideas[0].decision_reason == "Evidence and cost are acceptable."
+    assert any(
+        item.code == "REVIEW_SELECTED_IDEA_BOUNDARY"
+        for item in brief.questions
+    )
