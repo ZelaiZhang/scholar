@@ -252,6 +252,29 @@ def test_fulltext_fact_locator_must_be_declared_by_card(tmp_path: Path) -> None:
         load_knowledge_base(tmp_path)
 
 
+@pytest.mark.parametrize("fact_locator", ["p", ":"])
+def test_fulltext_fact_rejects_empty_or_partial_locator(
+    tmp_path: Path, fact_locator: str
+) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical, fulltext="verified")],
+    )
+    _write_card(
+        tmp_path,
+        record.source_id,
+        reading_scope="fulltext",
+        locators=["p. 4, Results"],
+        reported_facts=[
+            f"- 使用过短定位的事实（`{record.source_id}`，{fact_locator}）。"
+        ],
+    )
+
+    with pytest.raises(ValueError, match="locator.*locators"):
+        load_knowledge_base(tmp_path)
+
+
 def test_superseded_entry_requires_valid_acyclic_target(tmp_path: Path) -> None:
     first = _make_workspace(tmp_path)
     second = SourceRegistry(tmp_path / "library" / "sources.jsonl").add(

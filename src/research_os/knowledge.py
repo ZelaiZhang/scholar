@@ -416,10 +416,8 @@ def _locator_is_declared(locator: str, declared: tuple[str, ...]) -> bool:
         return " ".join(re.sub(r"[,;:]", " ", folded).split())
 
     normalized = normalize(locator)
-    return any(
-        (candidate := normalize(item)) in normalized
-        or normalized in candidate
-        for item in declared
+    return bool(normalized) and any(
+        normalize(item) == normalized for item in declared
     )
 
 
