@@ -90,6 +90,7 @@ def _write_card(
     *,
     reading_scope: str,
     locators: list[str],
+    reported_facts: list[str] | None = None,
 ) -> None:
     front_matter = yaml.safe_dump(
         {
@@ -103,7 +104,16 @@ def _write_card(
         allow_unicode=True,
         sort_keys=False,
     ).strip()
-    body = "\n\n".join(f"## {section}\n\n内容。" for section in CARD_SECTIONS)
+    if reported_facts is None:
+        locator = locators[0] if locators else "missing"
+        reported_facts = [
+            f"- 已报告的测试事实（`{source_id}`，{locator}）。"
+        ]
+    blocks = []
+    for section in CARD_SECTIONS:
+        content = "\n".join(reported_facts) if section == "已报告事实" else "内容。"
+        blocks.append(f"## {section}\n\n{content}")
+    body = "\n\n".join(blocks)
     (root / "library" / "knowledge" / "cards" / f"{source_id}.md").write_text(
         f"---\n{front_matter}\n---\n\n# Calibration for medical AI\n\n{body}\n",
         encoding="utf-8",
@@ -184,6 +194,64 @@ def test_valid_fulltext_card_loads_with_fixed_sections(tmp_path: Path) -> None:
     assert kb.cards[record.source_id].reading_scope == "fulltext"
 
 
+def test_reported_fact_requires_own_source_id_and_locator(tmp_path: Path) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical)],
+    )
+    _write_card(
+        tmp_path,
+        record.source_id,
+        reading_scope="abstract",
+        locators=["abstract"],
+        reported_facts=["- 一个没有独立证据定位的事实。"],
+    )
+
+    with pytest.raises(ValueError, match="事实.*source_id.*locator"):
+        load_knowledge_base(tmp_path)
+
+
+def test_abstract_card_and_facts_only_use_abstract_locator(tmp_path: Path) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical)],
+    )
+    _write_card(
+        tmp_path,
+        record.source_id,
+        reading_scope="abstract",
+        locators=["abstract", "Results"],
+        reported_facts=[
+            f"- 摘要卡伪装成正文事实（`{record.source_id}`，Results）。"
+        ],
+    )
+
+    with pytest.raises(ValueError, match="abstract.*locator"):
+        load_knowledge_base(tmp_path)
+
+
+def test_fulltext_fact_locator_must_be_declared_by_card(tmp_path: Path) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical, fulltext="verified")],
+    )
+    _write_card(
+        tmp_path,
+        record.source_id,
+        reading_scope="fulltext",
+        locators=["p. 4, Results"],
+        reported_facts=[
+            f"- 使用未声明章节的事实（`{record.source_id}`，Appendix Z）。"
+        ],
+    )
+
+    with pytest.raises(ValueError, match="locator.*locators"):
+        load_knowledge_base(tmp_path)
+
+
 def test_superseded_entry_requires_valid_acyclic_target(tmp_path: Path) -> None:
     first = _make_workspace(tmp_path)
     second = SourceRegistry(tmp_path / "library" / "sources.jsonl").add(
@@ -253,6 +321,27 @@ def test_knowledge_doctor_warns_when_review_is_older_than_365_days(
     assert any(issue.level == "WARN" and "超过 365 天" in issue.message for issue in report.issues)
 
 
+def test_knowledge_doctor_rejects_malformed_reporting_applicability(
+    tmp_path: Path,
+) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical)],
+    )
+    reporting = tmp_path / "library" / "knowledge" / "reporting-guidelines"
+    reporting.mkdir()
+    (reporting / "applicability.yaml").write_text(
+        "schema_version: 1\ncontexts: malformed\n",
+        encoding="utf-8",
+    )
+
+    report = inspect_knowledge_base(tmp_path)
+
+    assert report.exit_code == 2
+    assert any("适用性矩阵" in issue.message for issue in report.issues)
+
+
 def test_knowledge_root_cannot_be_a_symlink(tmp_path: Path) -> None:
     target = tmp_path / "outside"
     (target / "cards").mkdir(parents=True)
@@ -265,6 +354,30 @@ def test_knowledge_root_cannot_be_a_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="符号链接|目录联接"):
         load_knowledge_base(tmp_path)
+
+
+def test_knowledge_doctor_rejects_nested_asset_directory_link(
+    tmp_path: Path,
+) -> None:
+    record = _make_workspace(tmp_path)
+    _write_catalog(
+        tmp_path,
+        [_catalog_entry(record.source_id, record.canonical)],
+    )
+    maps = tmp_path / "library" / "knowledge" / "maps"
+    maps.mkdir()
+    outside = tmp_path / "outside-assets"
+    outside.mkdir()
+    link = maps / "external"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+
+    report = inspect_knowledge_base(tmp_path)
+
+    assert report.exit_code == 2
+    assert any("符号链接" in issue.message for issue in report.issues)
 
 
 def test_bundled_v04_seed_library_meets_acceptance_floor() -> None:

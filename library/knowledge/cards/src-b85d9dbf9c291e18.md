@@ -24,7 +24,7 @@ reviewed_at: 2026-08-12
 ## 已报告事实
 
 - LoRA 冻结预训练权重并训练低秩更新矩阵（`src-b85d9dbf9c291e18`，abstract）。
-- 摘要在当时的 RoBERTa、DeBERTa、GPT-2 与 GPT-3 设置报告参数和显存节省（同源，abstract）。
+- 摘要在当时的 RoBERTa、DeBERTa、GPT-2 与 GPT-3 设置报告参数和显存节省（`src-b85d9dbf9c291e18`，abstract）。
 
 ## 作者报告的限制
 

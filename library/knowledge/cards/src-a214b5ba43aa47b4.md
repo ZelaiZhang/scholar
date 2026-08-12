@@ -24,7 +24,7 @@ reviewed_at: 2026-08-12
 ## 已报告事实
 
 - 长回答评价覆盖科学共识、错误、遗漏、伤害与偏差（`src-a214b5ba43aa47b4`，Figures 4-6）。
-- 详细人工评价使用 140 个问题，每个回答由一位临床医生评价，并用 bootstrap 区间描述不确定性（同源，Human evaluation results）。
+- 详细人工评价使用 140 个问题，每个回答由一位临床医生评价，并用 bootstrap 区间描述不确定性（`src-a214b5ba43aa47b4`，Human evaluation results）。
 
 ## 作者报告的限制
 

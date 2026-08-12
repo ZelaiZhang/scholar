@@ -24,7 +24,7 @@ TRIPOD+AI 更新临床预测模型开发与性能评价研究的报告指南，�
 ## 已报告事实
 
 - TRIPOD+AI 面向预测模型开发与验证报告，不以算法属于回归还是 AI 作为分界（`src-f3ba1ce9a4e3bf75`，BMJ Main）。
-- 正式主文说明新版取代 2015 TRIPOD checklist（同源，Discussion）。
+- 正式主文说明新版取代 2015 TRIPOD checklist（`src-f3ba1ce9a4e3bf75`，Discussion）。
 
 ## 作者报告的限制
 

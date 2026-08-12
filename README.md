@@ -335,5 +335,7 @@ git diff --check
 - `doctor` 校验 run 状态、冻结产物哈希、三路评审、人工 selected Idea，以及 journal 中引用的 run 和产物是否真实存在。
 - `kb doctor` 校验 catalog schema、来源登记、阅读范围、全文 locator、替代关系、陈旧复核、知识资产引用和路径安全。
 - `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。
+- 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
+- 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
 日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。

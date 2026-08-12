@@ -3,17 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
-
 from research_os.knowledge import (
     PROFILE_TRACKS,
-    REPORTING_CONTEXTS,
     STAGES,
     CatalogEntry,
     KnowledgeBase,
     KnowledgeProfile,
     load_knowledge_base,
     load_profile,
+    load_reporting_applicability,
 )
 from research_os.project import (
     _is_link_or_reparse_point,
@@ -159,54 +157,12 @@ def _select_playbook(
     )
 
 
-def _load_applicability(kb: KnowledgeBase) -> dict[str, tuple[str, ...]]:
-    path = kb.root / "reporting-guidelines" / "applicability.yaml"
-    if not path.exists():
-        return {}
-    if _is_link_or_reparse_point(path) or not path.is_file():
-        raise ValueError(f"报告规范适用性矩阵不能是链接或目录: {path}")
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise ValueError(f"报告规范适用性矩阵无法解析: {path}") from exc
-    if not isinstance(raw, dict) or set(raw) != {"schema_version", "contexts"}:
-        raise ValueError("报告规范适用性矩阵字段必须为 schema_version 和 contexts")
-    if raw["schema_version"] != 1 or not isinstance(raw["contexts"], list):
-        raise ValueError("报告规范适用性矩阵 schema_version/contexts 无效")
-    known = {entry.source_id for entry in kb.entries}
-    result: dict[str, tuple[str, ...]] = {}
-    for index, value in enumerate(raw["contexts"]):
-        if not isinstance(value, dict) or set(value) != {
-            "context",
-            "guideline_source_ids",
-            "notes",
-        }:
-            raise ValueError(f"报告规范适用性矩阵 contexts[{index}] 字段无效")
-        context = value["context"]
-        source_ids = value["guideline_source_ids"]
-        notes = value["notes"]
-        if context not in REPORTING_CONTEXTS:
-            raise ValueError(f"报告规范 context 未受控: {context}")
-        if context in result:
-            raise ValueError(f"报告规范 context 重复: {context}")
-        if not isinstance(source_ids, list) or not source_ids or not all(
-            isinstance(source_id, str) and source_id in known for source_id in source_ids
-        ):
-            raise ValueError(f"报告规范 source_id 无效: {context}")
-        if len(set(source_ids)) != len(source_ids):
-            raise ValueError(f"报告规范 source_id 重复: {context}")
-        if not isinstance(notes, str) or not notes.strip():
-            raise ValueError(f"报告规范 notes 不能为空: {context}")
-        result[context] = tuple(source_ids)
-    return result
-
-
 def _select_reporting_guideline(
     kb: KnowledgeBase, profile: KnowledgeProfile | None
 ) -> KnowledgeRecommendation | None:
     if profile is None:
         return None
-    applicability = _load_applicability(kb)
+    applicability = load_reporting_applicability(kb)
     entries = {entry.source_id: entry for entry in kb.entries}
     for context in profile.reporting_context:
         for source_id in applicability.get(context, ()):

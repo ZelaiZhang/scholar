@@ -24,7 +24,7 @@ CLAIM 2024 更新医学影像 AI 研究的透明报告要求。
 ## 已报告事实
 
 - CLAIM 2024 专门面向快速演进的医学影像 AI 报告（`src-87fa2e6748d8dadb`，RSNA Summary）。
-- 更新建议使用 reference standard 描述衡量 AI 性能的基准（同源，Key Features of the 2024 Update）。
+- 更新建议使用 reference standard 描述衡量 AI 性能的基准（`src-87fa2e6748d8dadb`，Key Features of the 2024 Update）。
 
 ## 作者报告的限制
 

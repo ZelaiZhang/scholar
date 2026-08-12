@@ -152,6 +152,45 @@ def test_medical_project_gets_core_playbook_and_reporting_reference(
     assert all(item.cannot_use_for for item in recommendations)
 
 
+def test_superseded_reporting_guideline_resolves_to_active_replacement(
+    tmp_path: Path,
+) -> None:
+    workspace, _, old_guideline_id = _workspace(tmp_path)
+    project = workspace / "projects" / "medical-reasoning"
+    _write_medical_profile(project)
+    registry = SourceRegistry(workspace / "library" / "sources.jsonl")
+    replacement = registry.add("doi:10.1000/reporting-guideline-v2")
+    catalog_path = workspace / "library" / "knowledge" / "catalog.yaml"
+    catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+    old_guideline = next(
+        entry for entry in catalog["entries"] if entry["source_id"] == old_guideline_id
+    )
+    old_guideline["status"] = "superseded"
+    old_guideline["superseded_by"] = replacement.source_id
+    catalog["entries"].append(
+        _entry(
+            replacement,
+            title="Diagnostic accuracy reporting v2",
+            topics=["medical-ai", "reporting-guidelines"],
+            methods=["reporting-guideline", "diagnostic-accuracy"],
+            stages=["experiment-design", "writing", "review"],
+        )
+    )
+    catalog_path.write_text(
+        yaml.safe_dump(catalog, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    recommendations = recommend_for_project(
+        workspace, "medical-reasoning", stage="experiment-design"
+    )
+
+    reporting = next(
+        item for item in recommendations if item.kind == "reporting-guideline"
+    )
+    assert reporting.source_id == replacement.source_id
+
+
 def test_missing_profile_returns_generic_references_and_profile_hint(
     tmp_path: Path,
 ) -> None:

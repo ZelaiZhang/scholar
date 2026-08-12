@@ -149,6 +149,10 @@ CARD_SECTIONS = (
 )
 SOURCE_ID_PATTERN = re.compile(r"^src-[0-9a-f]{16}$")
 SOURCE_REFERENCE_PATTERN = re.compile(r"\bsrc-[0-9a-f]{16}\b")
+FACT_CITATION_PATTERN = re.compile(
+    r"[（(]\s*`(?P<source_id>src-[0-9a-f]{16})`\s*[，,]\s*"
+    r"(?P<locator>[^）)\r\n]+?)\s*[）)]"
+)
 
 
 @dataclass(frozen=True)
@@ -396,6 +400,73 @@ def _parse_front_matter(path: Path) -> tuple[dict[str, object], str]:
     return _mapping(raw, f"知识卡 {path.name}"), match.group(2)
 
 
+def _card_section(body: str, heading: str, context: str) -> str:
+    match = re.search(
+        rf"(?ms)^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)",
+        body,
+    )
+    if match is None:
+        raise ValueError(f"{context} 缺少固定区块: {heading}")
+    return match.group(1).strip()
+
+
+def _locator_is_declared(locator: str, declared: tuple[str, ...]) -> bool:
+    def normalize(value: str) -> str:
+        folded = value.casefold().replace("，", ",").replace("：", ":")
+        return " ".join(re.sub(r"[,;:]", " ", folded).split())
+
+    normalized = normalize(locator)
+    return any(
+        (candidate := normalize(item)) in normalized
+        or normalized in candidate
+        for item in declared
+    )
+
+
+def _validate_reported_facts(
+    *,
+    body: str,
+    source_id: str,
+    reading_scope: str,
+    locators: tuple[str, ...],
+    context: str,
+) -> None:
+    normalized_locators = tuple(locator.casefold() for locator in locators)
+    if reading_scope in {"metadata", "abstract"} and normalized_locators != (
+        reading_scope,
+    ):
+        raise ValueError(
+            f"{context} 的 {reading_scope} 卡片 locators 只能包含 {reading_scope} locator"
+        )
+    if reading_scope == "fulltext" and any(
+        locator in {"metadata", "abstract"} for locator in normalized_locators
+    ):
+        raise ValueError(f"{context} 的 fulltext 卡片不能使用摘要或元数据 locator")
+
+    section = _card_section(body, "已报告事实", context)
+    fact_lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not fact_lines or any(not line.startswith("- ") for line in fact_lines):
+        raise ValueError(
+            f"{context} 的已报告事实必须逐项列出，每项都带 source_id 和 locator"
+        )
+    for index, fact in enumerate(fact_lines, start=1):
+        citations = tuple(FACT_CITATION_PATTERN.finditer(fact))
+        if len(citations) != 1 or citations[0].group("source_id") != source_id:
+            raise ValueError(
+                f"{context} 的已报告事实第 {index} 项必须带当前 source_id 和 locator"
+            )
+        locator = citations[0].group("locator").strip()
+        if reading_scope in {"metadata", "abstract"}:
+            if locator.casefold() != reading_scope:
+                raise ValueError(
+                    f"{context} 的 {reading_scope} 事实 locator 必须为 {reading_scope}"
+                )
+        elif not _locator_is_declared(locator, locators):
+            raise ValueError(
+                f"{context} 的事实 locator 必须对应 front matter locators"
+            )
+
+
 def load_card(workspace: Path, source_id: str) -> KnowledgeCard:
     if not SOURCE_ID_PATTERN.fullmatch(source_id):
         raise ValueError(f"source_id 格式无效: {source_id}")
@@ -426,6 +497,13 @@ def load_card(workspace: Path, source_id: str) -> KnowledgeCard:
     missing = [section for section in CARD_SECTIONS if section not in headings]
     if missing:
         raise ValueError(f"{context} 缺少固定区块: {', '.join(missing)}")
+    _validate_reported_facts(
+        body=body,
+        source_id=source_id,
+        reading_scope=reading_scope,
+        locators=locators,
+        context=context,
+    )
     return KnowledgeCard(
         schema_version=SCHEMA_VERSION,
         source_id=source_id,
@@ -543,6 +621,79 @@ def load_knowledge_base(workspace: Path) -> KnowledgeBase:
     return KnowledgeBase(root=root, entries=entries, cards=cards, aliases=aliases)
 
 
+def resolve_current_catalog_entry(
+    kb: KnowledgeBase, source_id: str
+) -> CatalogEntry:
+    entries = {entry.source_id: entry for entry in kb.entries}
+    current = entries.get(source_id)
+    if current is None:
+        raise ValueError(f"报告规范 source_id 无效: {source_id}")
+    seen: set[str] = set()
+    while current.status == "superseded":
+        if current.source_id in seen or not current.superseded_by:
+            raise ValueError(f"报告规范替代关系无效: {source_id}")
+        seen.add(current.source_id)
+        current = entries[current.superseded_by]
+    if current.status != "active":
+        raise ValueError(
+            f"报告规范没有可用的 active 版本: {source_id} ({current.status})"
+        )
+    return current
+
+
+def load_reporting_applicability(
+    kb: KnowledgeBase,
+) -> dict[str, tuple[str, ...]]:
+    root = kb.root / "reporting-guidelines"
+    if _is_link_or_reparse_point(root):
+        raise ValueError(f"报告规范目录不能是符号链接或目录联接: {root}")
+    if not root.exists():
+        return {}
+    if not root.is_dir():
+        raise ValueError(f"报告规范目录必须是真实目录: {root}")
+    path = root / "applicability.yaml"
+    if _is_link_or_reparse_point(path):
+        raise ValueError(f"报告规范适用性矩阵不能是符号链接: {path}")
+    if not path.exists():
+        return {}
+    raw = _load_yaml(path, "报告规范适用性矩阵")
+    _exact_keys(raw, {"schema_version", "contexts"}, "报告规范适用性矩阵")
+    if raw["schema_version"] != SCHEMA_VERSION:
+        raise ValueError(
+            f"报告规范适用性矩阵.schema_version 必须为 {SCHEMA_VERSION}"
+        )
+    contexts = raw["contexts"]
+    if not isinstance(contexts, list):
+        raise ValueError("报告规范适用性矩阵.contexts 必须是列表")
+
+    result: dict[str, tuple[str, ...]] = {}
+    for index, value in enumerate(contexts):
+        context_label = f"报告规范适用性矩阵.contexts[{index}]"
+        item = _mapping(value, context_label)
+        _exact_keys(item, {"context", "guideline_source_ids", "notes"}, context_label)
+        context = _string(item["context"], f"{context_label}.context")
+        if context not in REPORTING_CONTEXTS:
+            raise ValueError(f"报告规范 context 未受控: {context}")
+        if context in result:
+            raise ValueError(f"报告规范 context 重复: {context}")
+        source_ids = _string_tuple(
+            item["guideline_source_ids"],
+            f"{context_label}.guideline_source_ids",
+        )
+        _string(item["notes"], f"{context_label}.notes")
+        resolved_ids: list[str] = []
+        for source_id in source_ids:
+            current = resolve_current_catalog_entry(kb, source_id)
+            if current.verification.metadata != "verified":
+                raise ValueError(
+                    f"报告规范当前版本尚未核验 metadata: {current.source_id}"
+                )
+            if current.source_id not in resolved_ids:
+                resolved_ids.append(current.source_id)
+        result[context] = tuple(resolved_ids)
+    return result
+
+
 def load_profile(path: Path) -> KnowledgeProfile:
     raw = _load_yaml(path, "knowledge profile")
     _exact_keys(raw, PROFILE_KEYS, "knowledge profile")
@@ -590,12 +741,12 @@ def _asset_reference_issues(kb: KnowledgeBase) -> list[KnowledgeIssue]:
             )
             continue
         for path in sorted(root.rglob("*")):
-            if path.is_dir():
-                continue
             if _is_link_or_reparse_point(path):
                 issues.append(
                     KnowledgeIssue("FAIL", f"知识资产不能是符号链接: {path}")
                 )
+                continue
+            if path.is_dir():
                 continue
             if path.suffix.lower() not in {".md", ".yaml", ".yml"}:
                 continue
@@ -620,6 +771,7 @@ def inspect_knowledge_base(
     current_date = today or date.today()
     try:
         kb = load_knowledge_base(workspace)
+        load_reporting_applicability(kb)
     except (FileNotFoundError, OSError, ValueError) as exc:
         return KnowledgeHealthReport(
             issues=(KnowledgeIssue("FAIL", str(exc)),),

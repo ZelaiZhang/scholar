@@ -24,7 +24,7 @@ reviewed_at: 2026-08-12
 ## 已报告事实
 
 - 摘要报告 RAG 在开放域问答和生成任务上相对若干参数化或检索抽取基线的结果（`src-8fc39e0ec1b6db48`，abstract）。
-- 摘要明确把 provenance 和知识更新视为参数模型的开放问题（同源，abstract）。
+- 摘要明确把 provenance 和知识更新视为参数模型的开放问题（`src-8fc39e0ec1b6db48`，abstract）。
 
 ## 作者报告的限制
 
