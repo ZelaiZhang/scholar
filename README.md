@@ -39,6 +39,37 @@
 
 若知识库损坏、科研循环产物哈希不一致、Idea 档案属于其他课题，或 project/ledger/archive 被替换成链接，命令会以错误码 2 关闭，不输出看似健康的部分报告。无效 claim 仍会显示校验问题，但不会计入健康证据数量。
 
+## v0.6 组会研究决策简报
+
+导师汇报或组会前，不必再手工把账本、Idea 和下一步复制到一个文档。运行：
+
+```powershell
+.\.venv\Scripts\research-os.exe meeting-brief `
+  --project medical-reasoning `
+  --as-of 2026-08-12 `
+  --format markdown
+```
+
+`meeting-brief` 会生成一份可直接重定向保存的研究决策简报：
+
+- **已支持的结论**：只收录通过 claim 级校验的条目，并逐条保留 `source_id`、`locator`、证据类型、置信度和限制；
+- **存在冲突的结论**：同时展示支持与反对证据，防止汇报时只讲有利结果；
+- **仍待核验的主张**：保留为 inference/hypothesis，不会被润色成事实；
+- **因证据问题而排除**：缺定位、未知来源或结构损坏的 claim 会说明排除原因；
+- **当前 Idea 与失败边界**：展示科学问题、假设、贡献、评分、新颖性、方法风险、医疗安全风险、失败判据、外部实验边界和人工批准理由；
+- **导师讨论问题与下一步**：最多三个问题和三个行动，稳定、去重且不会从不可信自由文本拼接命令。
+
+保存为组会 Markdown：
+
+```powershell
+.\.venv\Scripts\research-os.exe meeting-brief `
+  --project medical-reasoning `
+  --as-of 2026-08-12 `
+  > .\projects\medical-reasoning\writing\meeting-brief-2026-08-12.md
+```
+
+机器可读版本使用 `--format json`。相同工作区字节和 `--as-of` 会得到相同输出；命令本身只读、不联网、不调用模型。它面向研究管理和导师沟通，不是临床决策支持，也不能证明临床效用。
+
 ## 第一次使用
 
 要求 Python 3.11 或更高版本。在当前仓库打开 PowerShell：
@@ -347,6 +378,7 @@ reporting_context: [diagnostic-accuracy]
 doctor            只读工作区自检
 guide             课题驾驶舱与唯一下一步
 dashboard         课题全局状态、证据风险与最多三个今日行动
+meeting-brief     证据绑定的组会研究决策简报
 cycle             创建或恢复有界科研循环
 approve-idea      研究者批准当前 run 的入围 Idea
 new-project       创建课题
@@ -382,7 +414,8 @@ git diff --check
 - `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。
 - `kb search` 使用 NFKC、CJK 二元词片和人工双语别名支持中文术语；`kb gaps` 只读生成确定性维护队列。
 - `dashboard` 以版本化 JSON 聚合课题、证据、Idea、方法、风险和行动；固定 `--as-of` 后可复现且执行前后工作区字节不变。
+- `meeting-brief` 只把通过 claim 级校验的结论放入汇报主体；冲突、待核验与排除项分栏展示，并保留 Idea 失败判据和人工理由。
 - 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
 - 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
-日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。
+日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`，v0.6 组会简报设计见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。

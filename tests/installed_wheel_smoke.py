@@ -300,6 +300,37 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     )
     assert code == 0, approval
     assert advance_cycle(workspace, "wheel-topic").state == "completed"
+    meeting_args = [
+        "meeting-brief",
+        "--project",
+        "wheel-topic",
+        "--as-of",
+        "2026-08-12",
+        "--format",
+        "json",
+        "--workspace",
+        str(workspace),
+    ]
+    meeting_before = workspace_bytes(workspace)
+    code, first_meeting = run_cli(meeting_args)
+    assert code == 0, first_meeting
+    code, second_meeting = run_cli(meeting_args)
+    assert code == 0 and second_meeting == first_meeting, second_meeting
+    meeting_payload = json.loads(first_meeting)
+    supported = meeting_payload["evidence"]["supported"]
+    assert supported[0]["claim_id"] == "C001"
+    assert supported[0]["support"][0]["locator"] == "p. 1"
+    assert meeting_payload["idea_state"]["cycle_state"] == "completed"
+    assert meeting_payload["idea_state"]["selected_idea_ids"] == ["idea-0001"]
+    assert meeting_payload["ideas"][0]["failure_criterion"] == (
+        "Unsupported conclusions do not decrease."
+    )
+    assert meeting_payload["ideas"][0]["decision_reason"] == (
+        "Installed-wheel human gate"
+    )
+    assert len(meeting_payload["discussion_questions"]) <= 3
+    assert len(meeting_payload["actions"]) <= 3
+    assert workspace_bytes(workspace) == meeting_before
     code, guide = run_cli(
         ["guide", "--project", "wheel-topic", "--workspace", str(workspace)]
     )

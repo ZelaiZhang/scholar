@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-12；包版本：`0.5.0`；功能基线以本文档所在提交为准。
+> 最后核对：2026-08-12；包版本：`0.6.0`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.5.0`，已经完成：
+当前稳定版本是 `v0.6.0`，已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -42,8 +42,9 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 17. NFKC/CJK 词片和人工双语别名驱动的中文知识检索；
 18. 只读、可固定日期的知识维护缺口队列。
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
+20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 
-截至本文档更新，v0.5.0 完整测试为 `274 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
+截至本文档更新，v0.6.0 完整测试为 `282 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
 
 ## 3. 系统总览
 
@@ -52,6 +53,7 @@ flowchart LR
     U["研究者"] --> D["doctor：只读自检"]
     D --> G["guide：唯一下一步"]
     D --> B["dashboard：全局状态与三个行动"]
+    B --> M["meeting-brief：证据绑定的组会决策简报"]
     G --> S["Codex 科研技能"]
     G --> C["Research OS CLI"]
     S --> P["课题文件与人工判断"]
@@ -129,6 +131,7 @@ flowchart LR
 | `doctor` | 检查 Python、目录、技能、来源、课题、循环和日志 | 否 | 否 |
 | `guide` | 显示当前阶段、阻塞原因和唯一下一步 | 否 | 否 |
 | `dashboard` | 汇总课题、证据、Idea、方法、风险和最多三个今日行动 | 否 | 否 |
+| `meeting-brief` | 生成带定位、冲突、限制、Idea 边界和讨论问题的组会简报 | 否 | 否 |
 | `new-project` | 创建标准课题目录和模板 | 是 | 否 |
 | `add-source` | 登记、去重并可选关联单条来源 | 是 | 否 |
 | `add-sources` | 从 UTF-8 清单原子批量登记来源 | 是 | 否 |
@@ -148,9 +151,10 @@ flowchart LR
 .\.venv\Scripts\research-os.exe doctor
 .\.venv\Scripts\research-os.exe guide --project medical-reasoning
 .\.venv\Scripts\research-os.exe dashboard --project medical-reasoning --as-of 2026-08-12
+.\.venv\Scripts\research-os.exe meeting-brief --project medical-reasoning --as-of 2026-08-12
 ```
 
-`guide` 负责唯一下一步，`dashboard` 负责全局研究快照。二者复用同一阶段和门禁判断；`dashboard` 的 `--format json` 是未来接入外部模型进行受控语言润色的稳定边界，但当前命令不联网、不写文件，也不允许模型改变事实、风险或行动优先级。
+`guide` 负责唯一下一步，`dashboard` 负责全局研究快照，`meeting-brief` 负责把已经通过证据和 Idea 门禁的内容整理成导师可讨论的研究决策简报。三者复用同一阶段与门禁；JSON 是未来接入受控语言润色的稳定边界，但当前命令不联网、不写文件，也不允许模型改变事实、风险、讨论问题或行动优先级。
 
 批量登记来源：
 
@@ -320,6 +324,7 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `knowledge_recommend.py` | 课题画像、阶段、手册和报告规范推荐 | 最多三项，绝不自动关联项目证据 |
 | `dashboard.py` | 课题快照、证据/Idea 汇总和最多三个行动 | 只能编排既有严格 reader；不得写文件或调用 provider |
 | `dashboard_risks.py` | 对结构化事实执行稳定风险规则 | 不读文件、不解析自由文本、不把 unknown 当 observed |
+| `meeting_brief.py` | 逐条路由有效/冲突/待核验/排除 claim，投影 active Idea 并生成组会问题 | 必须保留 locator、limitations、Idea 失败判据和人工理由；不得自动改写事实 |
 
 ## 13. 开发与验证
 
@@ -361,6 +366,8 @@ git diff --check
 - `docs/superpowers/plans/2026-08-12-bilingual-search-and-gaps.md`：v0.4.1 TDD 实施计划。
 - `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`：v0.5 课题研究驾驶舱；
 - `docs/superpowers/plans/2026-08-12-project-research-dashboard.md`：v0.5 TDD 实施计划。
+- `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`：v0.6 证据绑定组会简报；
+- `docs/superpowers/plans/2026-08-12-evidence-meeting-brief.md`：v0.6 TDD 实施计划。
 
 关键提交脉络：
 
@@ -390,6 +397,10 @@ git diff --check
 | `ddf15ec` | Idea 状态与结构化风险规则 |
 | `455c9d4` | 方法学参考和去重行动优先级 |
 | `0f7ebe8` | `dashboard` CLI、JSON 与只读确定性测试 |
+| `331178a` | 允许上层编排复用同一个项目目录身份 |
+| `902d999` | 严格路由组会简报中的证据 claim |
+| `6ac09c2` / `6408b4b` | active Idea 决策上下文与显式人工门禁 |
+| `24c93e2` | `meeting-brief` Markdown/JSON CLI |
 
 ## 15. 已知限制与技术债
 
@@ -450,7 +461,36 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 
 完整规格和计划分别见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md` 与 `docs/superpowers/plans/2026-08-12-project-research-dashboard.md`。
 
-## 18. 安全扩展流程
+## 18. v0.6 组会研究决策简报：已实现
+
+> **实现状态：严格 claim 路由、active Idea 投影、讨论问题、Markdown/JSON CLI、只读确定性和 wheel 用户旅程均已存在。**
+
+`meeting-brief` 面向每周组会、导师一对一和开题准备，解决“系统知道状态，但研究者还要手工拼汇报”的缺口：
+
+1. 捕获一次当前 project identity，并贯穿 dashboard、manifest、ledger、Idea archive 和 active cycle 读取；
+2. 用当前课题已核验 source_id 重新运行 `validate_ledger`；
+3. 只有完全通过 claim 级校验的记录能进入主体；`verified`、`conflicted` 和 open 分栏保留，不能互相升级；
+4. 每条主体 claim 必须保留 statement、type、status、confidence、支持/反对的 `source_id + locator` 和 limitations；
+5. 有问题的 claim 进入排除区，显示 issue code 和原因，不会在汇报正文中“消失”或伪装健康；
+6. Idea 只来自当前 active run，复用冻结哈希、三审、meta-review、project/run 归属和 selected 校验；
+7. 简报显式显示 cycle state、人工门禁、已选 Idea、失败判据、外部实验边界和人工批准理由；
+8. 导师问题按阻塞、人工 Idea 决策、证据冲突/缺口和方法风险排序，最多三个；行动直接复用 dashboard 的安全命令，最多三个；
+9. Markdown/JSON 输出稳定，只写 stdout；固定 `--as-of` 且工作区字节不变时输出一致。
+
+命令示例：
+
+```powershell
+.\.venv\Scripts\research-os.exe meeting-brief `
+  --project medical-reasoning `
+  --as-of 2026-08-12 `
+  --format markdown
+```
+
+该简报是研究决策辅助，不是临床决策支持。它不能把公开基准结果外推为临床效用，也不能替代导师、统计复核、伦理审批或真实实验。
+
+完整规格和计划分别见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md` 与 `docs/superpowers/plans/2026-08-12-evidence-meeting-brief.md`。
+
+## 19. 安全扩展流程
 
 新增功能建议遵循：
 
@@ -469,7 +509,7 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 - 中途失败或并发运行会留下什么？
 - 哪个决定必须由研究者确认？
 
-## 18. 新开发者从这里开始
+## 20. 新开发者从这里开始
 
 ```powershell
 # 1. 阅读约束与产品说明
