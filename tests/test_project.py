@@ -52,6 +52,39 @@ def test_link_project_sources_is_ordered_and_idempotent(tmp_path: Path) -> None:
     assert load_project_manifest(path).source_ids == ("src-b", "src-a")
 
 
+def test_project_manifest_rejects_source_id_with_shell_syntax(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    manifest = project / "project.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "source_ids: []",
+            "source_ids:\n- 'src-safe; Write-Output injected'",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="source_ids"):
+        load_project_manifest(project)
+
+
+def test_link_project_sources_rejects_unsafe_id_without_changing_manifest(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    before = (project / "project.yaml").read_bytes()
+
+    with pytest.raises(ValueError, match="source_id"):
+        link_project_sources(
+            tmp_path,
+            "topic-a",
+            ["src-safe`nWrite-Output injected"],
+        )
+
+    assert (project / "project.yaml").read_bytes() == before
+
+
 def test_legacy_project_manifest_falls_back_to_brief_title(tmp_path: Path) -> None:
     project = tmp_path / "projects" / "legacy"
     project.mkdir(parents=True)

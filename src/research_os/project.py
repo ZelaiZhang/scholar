@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from research_os.io import atomic_write_text
+from research_os.sources import SOURCE_ID_PATTERN
 
 
 class ProjectExistsError(FileExistsError):
@@ -165,7 +166,7 @@ def load_project_manifest(
     ):
         raise ValueError(f"课题元数据字段无效: {path}")
     clean_ids = tuple(str(item).strip() for item in source_ids)
-    if any(not item.startswith("src-") for item in clean_ids):
+    if any(not SOURCE_ID_PATTERN.fullmatch(item) for item in clean_ids):
         raise ValueError(f"课题 source_ids 无效: {path}")
     if len(clean_ids) != len(set(clean_ids)):
         raise ValueError(f"课题 source_ids 包含重复项: {path}")
@@ -184,8 +185,11 @@ def link_project_sources(
     source_ids: list[str],
     expected_directory_identity: tuple[int, int] | None = None,
 ) -> None:
-    if any(not item.startswith("src-") for item in source_ids):
-        raise ValueError("source_id 必须以 src- 开头")
+    if any(
+        not isinstance(item, str) or not SOURCE_ID_PATTERN.fullmatch(item)
+        for item in source_ids
+    ):
+        raise ValueError("source_id 必须是安全的小写字母数字和单连字符")
     project_path = resolve_project_path(workspace, slug, require_exists=True)
     if expected_directory_identity is not None:
         metadata = project_path.stat()

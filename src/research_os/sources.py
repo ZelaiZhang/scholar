@@ -11,6 +11,9 @@ from urllib.parse import urlsplit, urlunsplit
 from research_os.io import atomic_write_text
 
 
+SOURCE_ID_PATTERN = re.compile(r"^src-[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
 class InvalidSourceError(ValueError):
     """Raised when an input cannot be interpreted as a supported source."""
 
@@ -31,10 +34,10 @@ class SourceRecord:
     metadata_status: str = "unverified"
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source_id, str) or not self.source_id.startswith(
-            "src-"
+        if not isinstance(self.source_id, str) or not SOURCE_ID_PATTERN.fullmatch(
+            self.source_id
         ):
-            raise ValueError("source_id 必须是以 src- 开头的字符串")
+            raise ValueError("source_id 必须是安全的小写字母数字和单连字符")
         if self.kind not in {"file", "doi", "arxiv", "url"}:
             raise ValueError(f"未知来源类型: {self.kind}")
         if not isinstance(self.canonical, str) or not self.canonical.strip():

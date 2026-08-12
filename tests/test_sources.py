@@ -45,6 +45,31 @@ def test_normalize_rejects_unknown_free_text() -> None:
         normalize_source("this is not a source")
 
 
+def test_registry_rejects_unsafe_source_id_from_serialized_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "sources.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "source_id": "src-safe; Write-Output injected",
+                "kind": "doi",
+                "canonical": "10.1000/safe",
+                "imported_at": "2026-08-12T00:00:00+00:00",
+                "content_hash": None,
+                "notes": "",
+                "external_api_allowed": False,
+                "metadata_status": "unverified",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="来源登记表第 1 行损坏"):
+        SourceRegistry(path).records()
+
+
 def test_registry_deduplicates_without_overwriting_notes(tmp_path: Path) -> None:
     registry = SourceRegistry(tmp_path / "sources.jsonl")
     first = registry.add("doi:10.1000/test", notes="人工笔记")
