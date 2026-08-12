@@ -167,6 +167,92 @@ def test_kb_doctor_returns_two_for_corrupt_catalog(tmp_path: Path, capsys) -> No
     assert "FAIL" in captured.out
 
 
+def test_kb_gaps_json_is_read_only_and_machine_readable(tmp_path: Path, capsys) -> None:
+    workspace, source_id = _workspace(tmp_path)
+    catalog = workspace / "library" / "knowledge" / "catalog.yaml"
+    project_manifest = workspace / "projects" / "medical-reasoning" / "project.yaml"
+    catalog_before = catalog.read_bytes()
+    project_before = project_manifest.read_bytes()
+
+    code = main(
+        [
+            "kb",
+            "gaps",
+            "--as-of",
+            "2026-08-12",
+            "--format",
+            "json",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload == [
+        {
+            "kind": "missing-card",
+            "source_id": source_id,
+            "title": "Calibration and external validation",
+            "priority": 3,
+            "reason": "来源已核验摘要或全文，但尚无结构化知识卡。",
+            "next_action": (
+                f"$paper-deep-read 为 {source_id} 生成逐事实带 locator 的知识卡。"
+            ),
+            "access_url": "https://doi.org/10.1000/calibration",
+        }
+    ]
+    assert catalog.read_bytes() == catalog_before
+    assert project_manifest.read_bytes() == project_before
+
+
+def test_kb_gaps_text_is_actionable_and_filterable(tmp_path: Path, capsys) -> None:
+    workspace, source_id = _workspace(tmp_path)
+
+    code = main(
+        [
+            "kb",
+            "gaps",
+            "--kind",
+            "missing-card",
+            "--topic",
+            "medical-ai",
+            "--as-of",
+            "2026-08-12",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "1 项" in output
+    assert source_id in output
+    assert "$paper-deep-read" in output
+    assert "只读" in output
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (["--as-of", "not-a-date"], "as-of"),
+        (["--limit", "0"], "limit"),
+    ],
+)
+def test_kb_gaps_invalid_date_or_limit_returns_two(
+    tmp_path: Path, capsys, extra_args: list[str], message: str
+) -> None:
+    workspace, _ = _workspace(tmp_path)
+
+    code = main(
+        ["kb", "gaps", *extra_args, "--workspace", str(workspace)]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert message in captured.err
+
+
 def test_kb_recommend_json_never_claims_global_source_is_linked(
     tmp_path: Path, capsys
 ) -> None:

@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Sequence
 
@@ -20,6 +21,7 @@ from research_os.knowledge import (
     inspect_knowledge_base,
     load_knowledge_base,
 )
+from research_os.knowledge_gaps import GAP_KINDS, GapFilters, find_knowledge_gaps
 from research_os.knowledge_recommend import recommend_for_project
 from research_os.knowledge_search import SearchFilters, search_knowledge
 from research_os.pdf import extract_pdf
@@ -176,6 +178,17 @@ def build_parser() -> argparse.ArgumentParser:
     kb_search.add_argument("--format", choices=("text", "json"), default="text")
     kb_search.add_argument("--include-history", action="store_true")
     kb_search.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    kb_gaps = kb_subparsers.add_parser(
+        "gaps", help="只读列出知识库核验、卡片和复核缺口"
+    )
+    kb_gaps.add_argument("--topic", choices=sorted(TOPICS), default="")
+    kb_gaps.add_argument("--method", choices=sorted(METHODS), default="")
+    kb_gaps.add_argument("--kind", choices=GAP_KINDS, default="")
+    kb_gaps.add_argument("--as-of", default="", help="复核截止日期 YYYY-MM-DD")
+    kb_gaps.add_argument("--limit", type=int, default=100)
+    kb_gaps.add_argument("--format", choices=("text", "json"), default="text")
+    kb_gaps.add_argument("--workspace", type=Path, default=Path.cwd())
 
     kb_recommend = kb_subparsers.add_parser(
         "recommend", help="按课题画像和当前阶段推荐方法学参考"
@@ -393,6 +406,55 @@ def _render_kb_search(results) -> str:
     return "\n".join(lines)
 
 
+def _gap_payload(gaps) -> list[dict[str, object]]:
+    return [
+        {
+            "kind": gap.kind,
+            "source_id": gap.source_id,
+            "title": gap.title,
+            "priority": gap.priority,
+            "reason": gap.reason,
+            "next_action": gap.next_action,
+            "access_url": gap.access_url,
+        }
+        for gap in gaps
+    ]
+
+
+def _render_kb_gaps(gaps, *, as_of: date) -> str:
+    if not gaps:
+        return (
+            "# 知识库维护队列\n\n"
+            f"- 截止日期: {as_of.isoformat()}\n"
+            "- 共 0 项\n"
+            "- 模式: 只读，不联网、不修改 catalog 或核验状态。\n\n"
+            "当前筛选范围没有待处理项。\n"
+        )
+    lines = [
+        "# 知识库维护队列",
+        "",
+        f"- 截止日期: {as_of.isoformat()}",
+        f"- 共 {len(gaps)} 项",
+        "- 模式: 只读，不联网、不修改 catalog 或核验状态。",
+        "",
+    ]
+    for index, gap in enumerate(gaps, 1):
+        lines.extend(
+            [
+                f"## {index}. {gap.title}",
+                "",
+                f"- 类型: `{gap.kind}`",
+                f"- source_id: `{gap.source_id}`",
+                f"- 队列优先级: {gap.priority}",
+                f"- 原因: {gap.reason}",
+                f"- 下一步: {gap.next_action}",
+                f"- 原文: {gap.access_url}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
 def _recommendation_payload(recommendations) -> list[dict[str, object]]:
     return [
         {
@@ -519,6 +581,30 @@ def _run(args: argparse.Namespace) -> int:
                 print(json.dumps(_search_payload(results), ensure_ascii=False, indent=2))
             else:
                 print(_render_kb_search(results), end="")
+            return 0
+        if args.kb_command == "gaps":
+            if args.as_of:
+                try:
+                    as_of = date.fromisoformat(args.as_of)
+                except ValueError as exc:
+                    raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
+            else:
+                as_of = date.today()
+            kb = load_knowledge_base(args.workspace)
+            gaps = find_knowledge_gaps(
+                kb,
+                as_of=as_of,
+                filters=GapFilters(
+                    topic=args.topic,
+                    method=args.method,
+                    kind=args.kind,
+                ),
+                limit=args.limit,
+            )
+            if args.format == "json":
+                print(json.dumps(_gap_payload(gaps), ensure_ascii=False, indent=2))
+            else:
+                print(_render_kb_gaps(gaps, as_of=as_of), end="")
             return 0
         if args.kb_command == "recommend":
             guide = guide_project(args.workspace, args.project)
