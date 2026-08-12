@@ -1,0 +1,4 @@
+interface:
+  display_name: "Idea Review"
+  short_description: "Challenge research ideas for novelty and feasibility"
+  default_prompt: "Use $idea-review to challenge and rank these research ideas."

@@ -524,6 +524,7 @@ git commit -m "feat: define evidence-first workspace contracts"
 - Create: `skills/result-interpreter/SKILL.md`
 - Create: `skills/manuscript-assistant/SKILL.md`
 - Create: `skills/mock-reviewer/SKILL.md`
+- Create: `skills/research-weekly-review/SKILL.md`
 - Create: corresponding `skills/*/agents/openai.yaml`
 - Create: `tests/test_skills.py`
 
@@ -535,7 +536,8 @@ import yaml
 
 ROOT = Path(__file__).parents[1]
 NAMES = ("research-project-init", "paper-intake", "paper-deep-read", "literature-synthesis",
-         "idea-review", "experiment-advisor", "result-interpreter", "manuscript-assistant", "mock-reviewer")
+         "idea-review", "experiment-advisor", "result-interpreter", "manuscript-assistant", "mock-reviewer",
+         "research-weekly-review")
 
 def test_all_skills_have_valid_minimal_frontmatter_and_ui_metadata():
     for name in NAMES:
@@ -567,6 +569,7 @@ experiment-advisor | Experiment Advisor | 设计基线、消融、指标和失�
 result-interpreter | Result Interpreter | 检查实验结果与结论是否匹配 | Use $result-interpreter to interpret these results conservatively.
 manuscript-assistant | Manuscript Assistant | 基于核验证据辅助论文写作 | Use $manuscript-assistant to draft from the verified evidence ledger.
 mock-reviewer | Mock Reviewer | 从方法统计和医疗安全角度模拟审稿 | Use $mock-reviewer to review this manuscript from multiple perspectives.
+research-weekly-review | Research Weekly Review | 汇总科研进展、证据变化、阻塞与下周行动 | Use $research-weekly-review to produce an evidence-based weekly research review.
 ```
 
 - [ ] **Step 4: Replace scaffold placeholders with concise workflows**
@@ -596,7 +599,7 @@ description: <what it does plus explicit trigger phrases>
 - Stop on identifiable health information or fabricated citations.
 ```
 
-Specialize the inputs, outputs, operation, and quality gate for each phase. `experiment-advisor` must prohibit experiment execution; `manuscript-assistant` must prohibit writing factual claims from unverified evidence.
+Specialize the inputs, outputs, operation, and quality gate for each phase. `experiment-advisor` must prohibit experiment execution; `manuscript-assistant` must prohibit writing factual claims from unverified evidence; `research-weekly-review` must distinguish completed evidence from planned work.
 
 - [ ] **Step 5: Validate skills and run tests**
 
@@ -698,7 +701,7 @@ Expected: Chinese help is readable; no template placeholder remains except delib
 
 - [ ] **Step 4: Validate all skills again**
 
-Run the skill creator's `quick_validate.py` for all nine skill directories.  
+Run the skill creator's `quick_validate.py` for all ten skill directories.
 Expected: every validator exits zero.
 
 - [ ] **Step 5: Commit any final corrections**

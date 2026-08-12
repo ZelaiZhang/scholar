@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manuscript Assistant"
+  short_description: "Draft manuscripts only from verified research evidence"
+  default_prompt: "Use $manuscript-assistant to draft from the verified evidence ledger."

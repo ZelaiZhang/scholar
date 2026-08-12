@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Weekly Review"
+  short_description: "Summarize verified weekly progress and next actions"
+  default_prompt: "Use $research-weekly-review to produce an evidence-based weekly research review."

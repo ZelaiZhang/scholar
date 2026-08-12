@@ -1,0 +1,4 @@
+interface:
+  display_name: "Literature Synthesis"
+  short_description: "Synthesize evidence, conflicts, methods, and research gaps"
+  default_prompt: "Use $literature-synthesis to synthesize the selected paper cards."

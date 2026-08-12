@@ -1,0 +1,4 @@
+interface:
+  display_name: "Experiment Advisor"
+  short_description: "Design rigorous baselines, ablations, metrics, and tests"
+  default_prompt: "Use $experiment-advisor to design a rigorous study without running it."

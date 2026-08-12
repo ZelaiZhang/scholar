@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mock Reviewer"
+  short_description: "Review methods, statistics, reproducibility, and safety"
+  default_prompt: "Use $mock-reviewer to review this manuscript from multiple perspectives."

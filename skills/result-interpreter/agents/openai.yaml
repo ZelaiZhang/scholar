@@ -1,0 +1,4 @@
+interface:
+  display_name: "Result Interpreter"
+  short_description: "Interpret results without overstating research conclusions"
+  default_prompt: "Use $result-interpreter to interpret these results conservatively."

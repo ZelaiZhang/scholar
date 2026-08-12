@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Deep Read"
+  short_description: "Create a traceable, page-cited structured paper card"
+  default_prompt: "Use $paper-deep-read to create a traceable paper card from this paper."
