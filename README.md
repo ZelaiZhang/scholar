@@ -24,7 +24,7 @@ python -m venv .venv
 .\.venv\Scripts\research-os.exe doctor
 ```
 
-`doctor` 是只读检查，不修改文件。它会检查 Python、工作区目录、10 个科研技能、来源登记表、本地来源哈希、课题完整性和中文终端。
+`doctor` 是只读检查，不修改文件。它会检查 Python、工作区目录、11 个科研技能、来源登记表、本地来源哈希、课题完整性、Idea 档案、科研循环日志和中文终端。
 
 创建课题并进入驾驶舱：
 
@@ -105,7 +105,8 @@ https://example.org/paper
 | 资料分诊 | `$paper-intake` | 已去重且关联课题的来源 |
 | 论文精读 | `$paper-deep-read` | 带 source_id 和页码定位的论文卡片 |
 | 文献综合 | `$literature-synthesis` | 共识、冲突、矩阵和研究空白 |
-| Idea 审查 | `$idea-review` | 最强反对意见、新颖性与可行性 |
+| Idea 循环 | `$research-cycle` | 候选档案、新颖性检索、三路独立评审与人工 shortlist |
+| 单次 Idea 反审 | `$idea-review` | 最强反对意见、新颖性与可行性 |
 | 实验设计 | `$experiment-advisor` | 基线、消融、统计和失败判据 |
 | 结果解读 | `$result-interpreter` | 能支持与不能支持的结论 |
 | 论文写作 | `$manuscript-assistant` | 基于核验证据的稿件与引用缺口 |
@@ -113,6 +114,36 @@ https://example.org/paper
 | 周复盘 | `$research-weekly-review` | 证据变化、阻塞和三个下周行动 |
 
 Codex 从仓库根目录的 `.agents/skills` 发现这些技能。如果技能列表未刷新，重启 Codex 并重新打开本仓库。
+
+## 有界 AI Co-Researcher 循环
+
+证据账本和文献综合就绪后，启动或恢复同一个 run：
+
+```powershell
+.\.venv\Scripts\research-os.exe cycle `
+  --project medical-reasoning `
+  --max-ideas 4 `
+  --max-calls 6
+```
+
+默认不联网、不调用外部模型，也不外发任何文件。首次运行会创建 `run_id`、`work-packet.md`、空 Idea 档案和哈希链研究日志，然后只返回一个动作。把输出中的指令交给 Codex，例如：
+
+```text
+$research-cycle 推进 medical-reasoning 的当前 run，只处理工作包指定阶段
+```
+
+循环固定经过：候选生成 → 真实文献新颖性检索 → Novelty / Methods / Medical Safety 三路独立评审 → meta-review → 等待研究者。每次重新运行 `cycle` 都从已校验产物恢复，不重复已完成阶段；`--new-run` 才会保留旧 run 并新建一个。
+
+模型或技能都不能写入 `selected`。只有研究者在当前 run 已通过候选冻结、三审和 meta-review 后，才能执行：
+
+```powershell
+.\.venv\Scripts\research-os.exe approve-idea `
+  --project medical-reasoning `
+  --idea idea-0003 `
+  --reason "证据充分、资源可控，并保留明确失败判据"
+```
+
+系统不保存隐藏思维链，只保存简洁理由、证据定位、冲突、哈希和 provenance。模型自评分只是排序建议，不能证明科学真实性或临床效用。
 
 ## 实验边界
 
@@ -158,11 +189,31 @@ claims:
 
 外部 API 不是必需项。默认禁止把任何来源发给外部模型；API Key 只从环境变量读取。
 
-以 DeepSeek 为例，在当前 PowerShell 会话设置：
+以 DeepSeek 为例，复制本地配置（`config/providers.yaml` 已被 Git 忽略），再在当前 PowerShell 会话设置 Key：
 
 ```powershell
+Copy-Item .\config\providers.example.yaml .\config\providers.yaml
 $env:DEEPSEEK_API_KEY="你的真实 Key"
 ```
+
+示例的 `economy` 使用 `https://api.deepseek.com` 和 `deepseek-v4-flash`，`quality` 使用 `deepseek-v4-pro`。模型名可能变化，使用前应核对服务商官方文档。任何其他实现 OpenAI Chat Completions 的 HTTPS 端点也可作为自定义 role。
+
+让外部 provider 推进当前可自动化阶段：
+
+```powershell
+.\.venv\Scripts\research-os.exe cycle `
+  --project medical-reasoning `
+  --provider-role economy `
+  --max-calls 6 `
+  --max-ideas 4 `
+  --allow-external-api
+```
+
+外部模式要求命令级 `--allow-external-api`，并要求当前课题的每个底层来源在登记时都带有 `--allow-external-api` 且哈希未漂移。系统先生成精确 `context.md` 快照并登记其哈希，再发送同一字节内容；疑似可识别医疗字段会阻断外发。
+
+预算采用调用前计费：请求发出前先原子增加 `calls_used`，网络失败或坏 JSON 也消耗一次，避免无限重试。三路独立评审开始前会检查剩余预算足够完成全部缺失角色，不够时一个都不调用。provider 不得替代真实文献检索。
+
+保留的底层 `model-call` 命令适合一次性、显式授权的 OpenAI-compatible 调用。以两个已登记 prompt 文件为例：
 
 把实际发送的 system 和 user 文件分别登记，并明确允许外发：
 
@@ -210,6 +261,8 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 ```text
 doctor            只读工作区自检
 guide             课题驾驶舱与唯一下一步
+cycle             创建或恢复有界科研循环
+approve-idea      研究者批准当前 run 的入围 Idea
 new-project       创建课题
 add-source        登记单条来源
 add-sources       原子批量登记来源
@@ -228,4 +281,4 @@ $env:PYTHONUTF8="1"
 git diff --check
 ```
 
-设计规格见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，实施计划见 `docs/superpowers/plans/2026-08-12-research-os-daily-driver.md`。
+日常驾驶舱设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`，实施计划见 `docs/superpowers/plans/2026-08-12-research-os-co-researcher.md`。

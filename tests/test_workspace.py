@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import yaml
+from research_os.provider_config import load_provider_config
 
 
 ROOT = Path(__file__).parents[1]
@@ -52,4 +53,26 @@ def test_daily_driver_is_documented_and_packaged() -> None:
     assert "research-os.exe doctor" in readme
     assert "research-os.exe guide" in readme
     assert "research-os.exe add-sources" in readme
-    assert 'version = "0.2.0"' in pyproject
+    assert "research-os.exe cycle" in readme
+    assert "research-os.exe approve-idea" in readme
+    assert "$research-cycle" in readme
+    assert 'version = "0.3.0"' in pyproject
+
+
+def test_supervised_cycle_boundaries_and_deepseek_are_documented() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "默认不联网" in readme
+    assert "调用前计费" in readme
+    assert "不保存隐藏思维链" in readme
+    assert "只有研究者" in readme and "selected" in readme
+    assert "config/providers.yaml" in readme
+    assert "deepseek-v4-flash" in readme
+    assert "独立实验仓库" in readme
+
+
+def test_provider_example_is_accepted_by_the_real_parser() -> None:
+    config = load_provider_config(ROOT / "config/providers.example.yaml")
+
+    assert config.roles["economy"].model == "deepseek-v4-flash"
+    assert config.roles["quality"].model == "deepseek-v4-pro"

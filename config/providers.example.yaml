@@ -3,24 +3,20 @@ version: 1
 # 角色只是路由别名。复制为 providers.yaml 后按需调整。
 roles:
   economy:
-    provider: deepseek
     base_url: https://api.deepseek.com
-    model: deepseek-v4-pro
+    model: deepseek-v4-flash
     api_key_env: DEEPSEEK_API_KEY
     temperature: 0.1
     timeout: 60
   quality:
-    provider: openai-compatible
-    base_url: https://your-provider.example/v1
-    model: your-quality-model
-    api_key_env: QUALITY_MODEL_API_KEY
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-pro
+    api_key_env: DEEPSEEK_API_KEY
     temperature: 0.1
     timeout: 90
   reviewer:
-    provider: openai-compatible
     base_url: https://your-independent-provider.example/v1
     model: your-review-model
     api_key_env: REVIEW_MODEL_API_KEY
     temperature: 0.0
     timeout: 90
-
