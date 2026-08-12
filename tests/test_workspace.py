@@ -43,3 +43,13 @@ def test_local_secrets_and_raw_artifacts_are_ignored() -> None:
     assert ".venv/" in patterns
     assert "inbox/**/*.pdf" in patterns
     assert "*.provenance.json" not in patterns
+
+
+def test_daily_driver_is_documented_and_packaged() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "research-os.exe doctor" in readme
+    assert "research-os.exe guide" in readme
+    assert "research-os.exe add-sources" in readme
+    assert 'version = "0.2.0"' in pyproject

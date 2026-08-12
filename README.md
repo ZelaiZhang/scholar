@@ -1,151 +1,132 @@
 # Research OS
 
-一个面向大模型研究生的、证据优先的 Codex 科研工作区。它帮助你从模糊方向走到文献综合、Idea 审查、实验设计、结果解释、论文写作、模拟审稿和返修，同时把来源、推断和人工判断分开保存。
+面向大模型研究生的本地科研驾驶舱：帮助你从模糊方向走到文献、Idea、实验设计、结果解读、论文写作和模拟审稿，同时把事实、模型推断和研究者判断分开保存。
 
-它不运行训练、微调、量化或强化学习，也不处理真实病例或可识别病历。实验代码应放在独立仓库中。
+它提供科研指导和整理减负，不执行训练、微调、量化、强化学习或集群任务；也不处理真实病例、可识别病历或个体诊疗请求。
 
-## 已包含什么
-
-- 本地 PDF、DOI、arXiv、URL 和研究笔记的登记与去重。
-- 保留页码边界的 PDF 文本提取。
-- 论文卡片、文献矩阵和证据账本模板。
-- 对已核验事实强制要求来源定位的校验器。
-- DeepSeek 等 OpenAI-compatible API 的可选适配层。
-- 十个可以被 Codex 自动发现的仓库级科研技能。
-- 公开资料边界、医疗安全规则和可追溯 provenance。
-
-## 安装
-
-项目要求 Python 3.11 或更高版本。当前工作区已经创建 `.venv`；在 PowerShell 中执行：
+## 每天只记一个命令
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\research-os.exe --help
+.\.venv\Scripts\research-os.exe guide --project medical-reasoning
 ```
 
-如果以后复制到新电脑：
+`guide` 会显示当前课题做到哪一步、哪里受阻，并且只给一个下一步以及可直接复制到 Codex 的技能指令。它不会调用模型猜进度，而是检查课题模板、显式关联的来源、论文卡片、证据账本和写作产物。
+
+## 第一次使用
+
+要求 Python 3.11 或更高版本。在当前仓库打开 PowerShell：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\research-os.exe doctor
 ```
 
-## 五分钟开始
+`doctor` 是只读检查，不修改文件。它会检查 Python、工作区目录、10 个科研技能、来源登记表、本地来源哈希、课题完整性和中文终端。
 
-### 1. 创建课题
+创建课题并进入驾驶舱：
 
 ```powershell
 .\.venv\Scripts\research-os.exe new-project `
   --title "医疗诊断大模型的可靠推理" `
   --slug medical-reasoning
+
+.\.venv\Scripts\research-os.exe guide --project medical-reasoning
 ```
 
-课题会创建在 `projects/medical-reasoning/`。先填写 `00-research-brief.md`，尤其是研究问题、边界和失败判据。
+新课题位于 `projects/medical-reasoning/`，包含：
 
-### 2. 登记公开论文
+- `START-HERE.md`：三十秒入口；
+- `project.yaml`：课题身份与显式关联的 `source_id`；
+- `00-research-brief.md`：研究问题、边界和失败判据；
+- `01-search-log.md`：检索与纳排记录；
+- `02-evidence-ledger.yaml`：支持、反对、冲突和限制；
+- `03` 至 `06`：综述、Idea、实验设计和结果解读；
+- `writing/`、`reviews/`、`artifacts/`：稿件、审稿与外部聚合结果。
 
-本地 PDF：
+接着把 `guide` 输出的 `$research-project-init ...` 指令交给 Codex。
 
-```powershell
-.\.venv\Scripts\research-os.exe add-source ".\inbox\paper.pdf" `
-  --notes "导师推荐，优先精读"
+## 批量收论文：推荐入口
+
+建立 UTF-8 清单，例如 `inbox/sources.txt`：
+
+```text
+# 每行一个公开来源
+doi:10.1000/example
+arXiv:2401.01234
+https://example.org/paper
+./paper.pdf
 ```
 
-DOI、arXiv 或网页：
+相对文件路径以清单所在目录为基准。一次性登记并关联到课题：
 
 ```powershell
-.\.venv\Scripts\research-os.exe add-source "doi:10.1000/example"
-.\.venv\Scripts\research-os.exe add-source "arXiv:2401.01234"
-.\.venv\Scripts\research-os.exe add-source "https://example.org/paper"
+.\.venv\Scripts\research-os.exe add-sources `
+  ".\inbox\sources.txt" `
+  --project medical-reasoning `
+  --notes "第一轮种子文献"
 ```
 
-重复来源返回相同 `source_id`，不会覆盖首次保存的人工笔记。
+批量导入采用全有或全无语义：坏一行会报告清单行号，`library/sources.jsonl` 和 `project.yaml` 都不会留下本批半成品。重复来源复用原 `source_id`，不覆盖首次人工笔记。
 
-### 3. 提取 PDF 文本
+单条来源仍可登记：
 
 ```powershell
-.\.venv\Scripts\research-os.exe extract-pdf ".\inbox\paper.pdf" `
+.\.venv\Scripts\research-os.exe add-source `
+  "doi:10.1000/example" `
+  --project medical-reasoning
+```
+
+多课题时务必传 `--project`。系统只统计课题在 `project.yaml` 中显式关联的来源，不把全局文献擅自归给其他课题。
+
+## PDF 精读
+
+先登记 PDF，再提取保留页码边界的文本：
+
+```powershell
+.\.venv\Scripts\research-os.exe add-source `
+  ".\inbox\paper.pdf" `
+  --project medical-reasoning
+
+.\.venv\Scripts\research-os.exe extract-pdf `
+  ".\inbox\paper.pdf" `
   --output ".\library\sources\paper.extracted.md"
 ```
 
-输出使用 `<!-- page:N -->` 标记页边界。扫描版 PDF 会停止并提示先做 OCR，不会让模型猜正文。
+提取文本使用 `<!-- page:N -->` 标记页面。扫描版 PDF 没有文本层时，命令会停止并提示 OCR，不会猜测正文。随后让 `guide` 给出 `$paper-deep-read` 指令。
 
-### 4. 让 Codex 精读
+## 端到端工作流
 
-在本仓库的新 Codex 任务中输入：
+| 阶段 | Codex 技能 | 核心产物 |
+|---|---|---|
+| 课题定义 | `$research-project-init` | 可证伪研究简报 |
+| 资料分诊 | `$paper-intake` | 已去重且关联课题的来源 |
+| 论文精读 | `$paper-deep-read` | 带 source_id 和页码定位的论文卡片 |
+| 文献综合 | `$literature-synthesis` | 共识、冲突、矩阵和研究空白 |
+| Idea 审查 | `$idea-review` | 最强反对意见、新颖性与可行性 |
+| 实验设计 | `$experiment-advisor` | 基线、消融、统计和失败判据 |
+| 结果解读 | `$result-interpreter` | 能支持与不能支持的结论 |
+| 论文写作 | `$manuscript-assistant` | 基于核验证据的稿件与引用缺口 |
+| 模拟审稿 | `$mock-reviewer` | 方法、统计、复现和医疗安全审查 |
+| 周复盘 | `$research-weekly-review` | 证据变化、阻塞和三个下周行动 |
+
+Codex 从仓库根目录的 `.agents/skills` 发现这些技能。如果技能列表未刷新，重启 Codex 并重新打开本仓库。
+
+## 实验边界
+
+Research OS 会把流程推进到 `05-experiment-design.md`，然后明确等待独立实验仓库的结果，不会在本仓库执行训练。
+
+完成外部实验和人工复核后，只把公开或脱敏的聚合结果放到：
 
 ```text
-$paper-deep-read 请精读 library/sources/paper.extracted.md，
-source_id 是 src-xxxxxxxxxxxxxxxx，生成论文卡片。
+projects/<slug>/artifacts/
 ```
 
-Codex 从仓库根目录 `.agents/skills` 自动发现技能；若技能列表没有立即刷新，重启 Codex。仓库技能位置和显式 `$skill-name` 调用方式来自[官方 Codex 技能文档](https://developers.openai.com/codex/skills)。
+再次运行 `guide`，它会推荐 `$result-interpreter`。不要把真实病例、姓名、住院号、联系方式或原始可识别健康数据放进本工作区。
 
-### 5. 校验证据账本
+## 证据账本
 
-```powershell
-.\.venv\Scripts\research-os.exe validate-ledger `
-  ".\projects\medical-reasoning\02-evidence-ledger.yaml" `
-  --report ".\projects\medical-reasoning\artifacts\evidence-check.md"
-```
-
-返回码 `0` 表示通过；`1` 表示存在缺失来源、页码、状态或限制说明。
-默认在当前工作区的 `library/sources.jsonl` 核验 `source_id`；校验其他工作区时添加 `--workspace <路径>`。
-
-## 端到端技能
-
-| 阶段 | 技能 | 示例请求 |
-|---|---|---|
-| 课题定义 | `$research-project-init` | 把“医疗大模型思维链”整理成一个可证伪课题 |
-| 资料分诊 | `$paper-intake` | 登记 inbox 中的论文并按精读优先级分组 |
-| 论文精读 | `$paper-deep-read` | 从全文生成带页码定位的论文卡片 |
-| 文献综合 | `$literature-synthesis` | 综合这些卡片的共识、冲突和候选研究空白 |
-| Idea 审查 | `$idea-review` | 对三个创新点做最严格的反向审查并排序 |
-| 实验设计 | `$experiment-advisor` | 设计基线、消融、指标和失败判据，不运行实验 |
-| 结果解释 | `$result-interpreter` | 检查这份实验表是否支持原假设，指出越界结论 |
-| 论文写作 | `$manuscript-assistant` | 只根据已核验证据生成 Related Work 大纲 |
-| 模拟审稿 | `$mock-reviewer` | 从方法、统计、复现和医疗安全四个视角审稿 |
-| 周复盘 | `$research-weekly-review` | 根据本周文件和提交生成周报及三个下周行动 |
-
-## DeepSeek 和其他外部模型
-
-外部模型是可选项。Codex 仍负责工作区编排；低成本摘要、格式转换或独立审稿可以交给 OpenAI-compatible 服务。
-
-DeepSeek 当前官方示例使用 `https://api.deepseek.com` 作为 `base_url`，再调用 `/chat/completions`；示例配置见 `config/providers.example.yaml`。[DeepSeek 官方 API 示例](https://api-docs.deepseek.com/guides/multi_round_chat/)
-
-在当前 PowerShell 会话设置 Key：
-
-```powershell
-$env:DEEPSEEK_API_KEY="你的真实 Key"
-```
-
-不要把 Key 写入 `.env.example`、YAML、论文卡片或 Git。调用示例：
-
-先把本次请求实际发送的两个提示词文件登记并显式授权。命令会按当前内容哈希核对文件，不能用无关的已授权来源代替：
-
-```powershell
-.\.venv\Scripts\research-os.exe add-source ".\prompts\system.md" --allow-external-api
-.\.venv\Scripts\research-os.exe add-source ".\prompts\task.md" --allow-external-api
-```
-
-记下输出的两个 `source_id`，再调用模型：
-
-```powershell
-.\.venv\Scripts\research-os.exe model-call `
-  --base-url "https://api.deepseek.com" `
-  --model "deepseek-v4-pro" `
-  --api-key-env "DEEPSEEK_API_KEY" `
-  --system ".\prompts\system.md" `
-  --user ".\prompts\task.md" `
-  --output ".\artifacts\model-output.json" `
-  --source-id "src-system文件的ID" `
-  --source-id "src-task文件的ID" `
-  --allow-external-api
-```
-
-`--allow-external-api` 和来源级授权是双重硬门禁：缺少任一项都会拒绝请求。修改提示词文件后内容哈希和 `source_id` 会变化，必须重新登记和授权。只允许把公开资料或已确认脱敏的示例发送给外部服务。每次成功调用会生成同名 `.provenance.json`，其中记录模型、参数、时间、用量和提示词哈希，但不记录 API Key。
-
-## 证据账本最小示例
+事实、推断和假设分别使用 `fact`、`inference`、`hypothesis`。已核验事实必须有登记过的 `source_id` 和页码、章节或可复核段落：
 
 ```yaml
 claims:
@@ -158,48 +139,91 @@ claims:
         locator: "p. 6, Table 2"
     opposition: []
     confidence: medium
-    limitations: "单一公开数据集，尚不能说明临床效用"
+    limitations: "单一公开数据集，不能说明临床效用"
 ```
 
-允许的 `type` 是 `fact`、`inference`、`hypothesis`；允许的状态是 `unverified`、`partially_verified`、`verified`、`conflicted`。
+校验命令：
 
-## 推荐日常节奏
-
-1. 新资料先进入 `inbox/`，登记后再阅读。
-2. 每篇重要论文生成一张卡片，不把摘要等同于全文。
-3. 每周更新一次文献矩阵和证据账本。
-4. Idea 必须经过最近工作检索和最强反对意见检查。
-5. 实验前写失败判据；实验后同时记录负结果和异常。
-6. 写作前运行证据校验；投稿前运行多视角模拟审稿。
-7. 用 Git 提交课题记录，提交信息说明新增了什么证据或修改了什么判断。
-
-## 目录说明
-
-```text
-.agents/skills/   Codex 自动发现的科研技能
-config/           隐私、证据和模型角色配置
-inbox/            待处理公开资料；PDF 默认不进 Git
-library/          来源登记、论文卡片和文献矩阵
-projects/         每个研究课题的持久成果
-src/research_os/templates/  各科研阶段的可编辑、可打包模板
-src/research_os/  确定性 CLI 工具
-tests/            自动测试
+```powershell
+.\.venv\Scripts\research-os.exe validate-ledger `
+  ".\projects\medical-reasoning\02-evidence-ledger.yaml" `
+  --workspace .
 ```
+
+退出码 `0` 表示通过，`1` 表示证据问题，`2` 表示输入或工作区错误。`guide` 发现账本损坏、未知来源或本地文件哈希漂移时会阻止进入 Idea 和写作阶段。
+
+## 可选 DeepSeek / OpenAI-compatible API
+
+外部 API 不是必需项。默认禁止把任何来源发给外部模型；API Key 只从环境变量读取。
+
+以 DeepSeek 为例，在当前 PowerShell 会话设置：
+
+```powershell
+$env:DEEPSEEK_API_KEY="你的真实 Key"
+```
+
+把实际发送的 system 和 user 文件分别登记，并明确允许外发：
+
+```powershell
+.\.venv\Scripts\research-os.exe add-source ".\prompts\system.md" --allow-external-api
+.\.venv\Scripts\research-os.exe add-source ".\prompts\task.md" --allow-external-api
+```
+
+记下两个 `source_id` 后调用：
+
+```powershell
+.\.venv\Scripts\research-os.exe model-call `
+  --base-url "https://api.deepseek.com" `
+  --model "你实际可用的模型名" `
+  --api-key-env "DEEPSEEK_API_KEY" `
+  --system ".\prompts\system.md" `
+  --user ".\prompts\task.md" `
+  --output ".\artifacts\model-output.md" `
+  --source-id "src-system文件的ID" `
+  --source-id "src-task文件的ID" `
+  --allow-external-api
+```
+
+命令同时检查调用级许可、来源级许可和当前文件哈希。成功后生成同名 `.provenance.json`，记录模型、参数、时间、用量和提示词哈希，但不记录 Key。配置参考 `config/providers.example.yaml`。
+
+## 旧课题与升级
+
+第一版课题没有 `project.yaml` 时，`guide` 可以从目录名和研究简报标题回退读取，但不会猜它用了哪些全局来源。之后执行带 `--project` 的 `add-source` 或 `add-sources`，系统会创建元数据并补充明确关联。
+
+已有手工文件不会被自动覆盖；`guide` 只读。重新生成内容前仍应由 Codex 遵守 `AGENTS.md` 的文件保护规则。
 
 ## 常见问题
 
-- **中文帮助乱码**：先运行 `$env:PYTHONUTF8="1"`，再执行命令。
-- **PDF 提示 OCR**：原文件没有文本层；先用可信 OCR 工具生成可搜索 PDF。
-- **提示 Key 缺失**：在当前 PowerShell 会话设置配置中指定的环境变量。
-- **外部 API 被拒绝**：确认材料是公开资料，再显式添加 `--allow-external-api`。
-- **证据校验失败**：按报告补充 `source_id`、页码/章节、限制或正确状态，不要为了通过而伪造字段。
-- **技能没有出现**：确认从仓库内启动 Codex，技能位于 `.agents/skills`，然后重启 Codex。
+- **先运行什么？** 执行 `.\.venv\Scripts\research-os.exe doctor`，然后执行 `guide`。
+- **中文帮助乱码？** `research-os.exe` 会在 Windows 自动配置 UTF-8；若直接运行其他 Python 脚本，可先设置 `$env:PYTHONUTF8="1"`。
+- **批量导入失败？** 按错误中的清单行号修复，重新运行原命令；不要拆成循环导入。
+- **PDF 提示 OCR？** 原 PDF 没有可搜索文本层，先用可信 OCR 工具生成可搜索副本。
+- **证据校验失败？** 修复 source_id、原文定位、状态或限制说明，不要为了通过而伪造字段。
+- **`guide` 要求显式课题？** 工作区有多个课题；添加 `--project <slug>`。
+- **技能没有出现？** 从仓库根目录重启 Codex，确认 `.agents/skills` 存在。
+- **外部 API 被拒绝？** 只有公开或确认脱敏的材料才能显式授权；文件修改后必须重新登记。
+
+## 全部 CLI
+
+```text
+doctor            只读工作区自检
+guide             课题驾驶舱与唯一下一步
+new-project       创建课题
+add-source        登记单条来源
+add-sources       原子批量登记来源
+extract-pdf       提取带页码边界的 PDF 文本
+validate-ledger   校验证据账本
+model-call        调用显式授权的外部模型
+```
 
 ## 开发验证
 
 ```powershell
 $env:PYTHONUTF8="1"
+.\.venv\Scripts\python.exe -m compileall -q src
 .\.venv\Scripts\python.exe -m pytest -q -W error
+.\.venv\Scripts\python.exe -m pip check
+git diff --check
 ```
 
-详细方案见 `docs/superpowers/specs/2026-08-12-research-os-design.md`，逐步实施记录见 `docs/superpowers/plans/2026-08-12-research-os.md`。
+设计规格见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，实施计划见 `docs/superpowers/plans/2026-08-12-research-os-daily-driver.md`。
