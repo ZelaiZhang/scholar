@@ -43,7 +43,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 18. 只读、可固定日期的知识维护缺口队列。
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 
-截至本文档更新，v0.5.0 完整测试为 `272 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
+截至本文档更新，v0.5.0 完整测试为 `274 passed`，并使用 warnings-as-errors；发布交付仍应重跑本文第 13 节的全部命令和独立 wheel 冒烟。
 
 ## 3. 系统总览
 
@@ -443,6 +443,7 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 - 只有没有 claim 级校验问题的证据才进入健康统计；
 - Idea archive 必须同时绑定当前 project slug 与 active run；
 - 候选生成、新颖性、独立评审和 meta-review 四个门禁只有在 `validate_cycle_artifacts` 验证冻结哈希、review run_id 和 selected Idea 后才标记完成。
+- dashboard 在任何业务读取前只捕获一次当前课题目录身份，并将它贯穿 manifest、ledger、guide、knowledge profile、Idea archive 和 active cycle 读取；预检后或中途的同名目录替换会失败关闭；
 - manifest、ledger、Idea archive 和知识 YAML 使用同一稳定直接读取原语：打开前后复核文件与父目录身份，拒绝 symlink/reparse，并在解析前确认读取期间未被替换；新颖性门禁还会逐个验证候选的 checked 状态、检索式、最近来源和差异说明。
 
 新增或修改风险规则时，必须先在 `tests/test_dashboard.py` 写出可复现的结构化触发和 unknown 反例。不得扫描研究简报、claim statement 或模型输出关键词后声称发现医疗缺陷。新增行动命令必须来自现有受控 CLI/技能契约，不能把来源 notes、claim 文本或其他不可信内容拼进 shell 命令。
