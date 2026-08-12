@@ -4,9 +4,18 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from research_os.cycle import load_active_cycle
+from research_os.dashboard_risks import (
+    DashboardRisk,
+    RiskFacts,
+    evaluate_dashboard_risks,
+)
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
 from research_os.guidance import GuideReport, guide_project
+from research_os.ideas import load_idea_archive
+from research_os.knowledge import load_profile
 from research_os.project import (
+    _is_link_or_reparse_point,
     load_project_manifest,
     resolve_project_path,
     resolve_workspace_directory,
@@ -37,11 +46,24 @@ class EvidenceHealth:
 
 
 @dataclass(frozen=True)
+class IdeaStatus:
+    run_id: str
+    cycle_state: str
+    candidate_count: int
+    selected_idea_ids: tuple[str, ...]
+    human_decision_required: bool
+    calls_used: int
+    max_calls: int
+
+
+@dataclass(frozen=True)
 class ProjectDashboard:
     schema_version: int
     as_of: str
     project: ProjectStatus
     evidence: EvidenceHealth
+    idea: IdeaStatus
+    risks: tuple[DashboardRisk, ...]
 
 
 def _project_status(report: GuideReport) -> ProjectStatus:
@@ -120,6 +142,48 @@ def _evidence_health(
     )
 
 
+def _idea_status(
+    workspace: Path,
+    project: Path,
+    *,
+    slug: str,
+    allowed_source_ids: set[str],
+) -> IdeaStatus:
+    if not (project / "cycles").exists():
+        return IdeaStatus("", "not_started", 0, (), False, 0, 0)
+    _run_dir, manifest = load_active_cycle(workspace, slug)
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(
+        archive_path,
+        allowed_source_ids=allowed_source_ids,
+    )
+    active_ideas = tuple(
+        idea for idea in archive.ideas if idea.generated_by_run == manifest.run_id
+    )
+    selected = tuple(
+        idea.idea_id for idea in active_ideas if idea.status == "selected"
+    )
+    return IdeaStatus(
+        run_id=manifest.run_id,
+        cycle_state=manifest.state,
+        candidate_count=len(active_ideas),
+        selected_idea_ids=selected,
+        human_decision_required=manifest.state == "awaiting_human_decision",
+        calls_used=manifest.calls_used,
+        max_calls=manifest.max_calls,
+    )
+
+
+def _profile_facts(project: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    path = project / "knowledge-profile.yaml"
+    if not path.exists():
+        return (), ()
+    if _is_link_or_reparse_point(path):
+        raise ValueError(f"课题知识画像不能是符号链接或目录联接: {path}")
+    profile = load_profile(path)
+    return profile.domains, profile.tracks
+
+
 def build_project_dashboard(
     workspace: Path,
     slug: str,
@@ -136,13 +200,38 @@ def build_project_dashboard(
     verified_source_ids = registry.verified_source_ids()
     ledger = load_ledger(project / "02-evidence-ledger.yaml")
     guide = guide_project(workspace, slug)
+    evidence = _evidence_health(
+        ledger,
+        linked_source_ids=manifest.source_ids,
+        verified_source_ids=verified_source_ids,
+    )
+    idea = _idea_status(
+        workspace,
+        project,
+        slug=slug,
+        allowed_source_ids=set(manifest.source_ids),
+    )
+    profile_domains, profile_tracks = _profile_facts(project)
+    experiment_design = next(
+        stage for stage in guide.stages if stage.name == "实验设计"
+    )
     return ProjectDashboard(
         schema_version=1,
         as_of=as_of.isoformat(),
         project=_project_status(guide),
-        evidence=_evidence_health(
-            ledger,
-            linked_source_ids=manifest.source_ids,
-            verified_source_ids=verified_source_ids,
+        evidence=evidence,
+        idea=idea,
+        risks=evaluate_dashboard_risks(
+            RiskFacts(
+                stale_source_ids=evidence.stale_or_unknown_source_ids,
+                ledger_issue_codes=tuple(
+                    sorted({issue.code for issue in evidence.validation_issues})
+                ),
+                cycle_state=idea.cycle_state,
+                human_decision_required=idea.human_decision_required,
+                profile_domains=profile_domains,
+                profile_tracks=profile_tracks,
+                experiment_design_status=experiment_design.status,
+            )
         ),
     )
