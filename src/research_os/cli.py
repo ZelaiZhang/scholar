@@ -180,8 +180,13 @@ def _link_sources_transactionally(
     except BaseException:
         rollback_errors: list[Exception] = []
         try:
+            current_registry = _registry_path(workspace)
+            if current_registry != registry_path:
+                raise OSError(
+                    f"来源登记表路径在回滚前发生改变: {current_registry}"
+                )
             _restore_file(registry_path, registry_snapshot)
-        except OSError as rollback_error:
+        except (OSError, ValueError) as rollback_error:
             rollback_errors.append(rollback_error)
         if project_manifest is not None:
             try:

@@ -557,6 +557,51 @@ def test_cli_rollback_never_writes_through_replaced_project_link(
     assert load_project_manifest(moved_project).source_ids == ()
 
 
+def test_cli_rollback_never_unlinks_through_replaced_library_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+    library = tmp_path / "library"
+    moved_library = tmp_path / "moved-library"
+    outside = tmp_path / "outside-library"
+    outside.mkdir()
+    outside_registry = outside / "sources.jsonl"
+    outside_registry.write_text("external sentinel\n", encoding="utf-8")
+
+    def replace_library_then_fail(*_args) -> None:
+        library.rename(moved_library)
+        if os.name == "nt":
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(library), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            library.symlink_to(outside, target_is_directory=True)
+        raise OSError("simulated library replacement during linking")
+
+    monkeypatch.setattr(
+        cli_module, "link_project_sources", replace_library_then_fail
+    )
+
+    exit_code = main(
+        [
+            "add-source",
+            "doi:10.1000/no-external-unlink",
+            "--workspace",
+            str(tmp_path),
+            "--project",
+            "topic-a",
+        ]
+    )
+
+    assert exit_code == 2
+    assert outside_registry.read_text(encoding="utf-8") == "external sentinel\n"
+    assert (moved_library / "sources.jsonl").is_file()
+
+
 def test_cli_preflights_project_before_registering_single_source(
     tmp_path: Path,
 ) -> None:
