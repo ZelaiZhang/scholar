@@ -3,16 +3,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+import hashlib
+import json
+from pathlib import Path
 
 from research_os.dashboard import ProjectStatus
+from research_os.cycle_context import IDENTIFIABLE_MEDICAL_MARKERS
+from research_os.io import (
+    assert_directory_identity,
+    direct_file_identity,
+    directory_identity,
+    read_stable_direct_text,
+)
 from research_os.manuscript_markup import (
     AUDITED_SECTIONS,
     ManuscriptBlock,
     ParsedManuscript,
+    parse_manuscript,
 )
-from research_os.manuscript_plan import ManuscriptPlan, SectionReadiness
-from research_os.meeting_brief import BriefClaim, ExcludedClaim
-from research_os.result_inputs import ResultInputSnapshot
+from research_os.manuscript_plan import (
+    ManuscriptPlan,
+    SectionReadiness,
+    manuscript_plan_from_brief,
+    manuscript_plan_payload,
+)
+from research_os.meeting_brief import BriefClaim, ExcludedClaim, build_meeting_brief
+from research_os.project import resolve_project_path
+from research_os.result_inputs import ResultInputSnapshot, load_result_inputs
 
 
 _KIND_ORDER = ("fact", "inference", "hypothesis", "limitation", "method", "result")
@@ -36,6 +54,13 @@ _ALLOWED_SECTIONS = {
         {"Abstract", "Introduction", "Results", "Limitations and Ethics", "Conclusion"}
     ),
 }
+_PHI_MARKERS = IDENTIFIABLE_MEDICAL_MARKERS
+_AUDIT_BOUNDARIES = (
+    "ANNOTATION_NOT_ENTAILMENT",
+    "This audit is not clinical decision support.",
+    "Research OS did not rewrite the manuscript or execute experiments.",
+    "The researcher must verify semantic entailment and approve every statement.",
+)
 
 
 @dataclass(frozen=True)
@@ -229,8 +254,229 @@ def audit_parsed_manuscript(
         issues=sorted_issues,
         used_claim_ids=tuple(sorted(used_claim_ids)),
         used_result_artifacts=tuple(sorted(used_artifacts)),
-        boundaries=("ANNOTATION_NOT_ENTAILMENT",),
+        boundaries=_AUDIT_BOUNDARIES,
     )
+
+
+def build_manuscript_audit(
+    workspace: Path,
+    slug: str,
+    draft: Path,
+    *,
+    as_of: date,
+) -> ManuscriptAudit:
+    """Build a read-only audit from one stable, direct project writing file."""
+    if not isinstance(as_of, date):
+        raise TypeError("as_of must be a date")
+    workspace = workspace.resolve()
+    project = resolve_project_path(workspace, slug, require_exists=True)
+    project_identity = directory_identity(project)
+    writing = project / "writing"
+    writing_identity = directory_identity(writing)
+    draft_path = _safe_draft_path(project, writing, draft)
+    draft_identity = direct_file_identity(
+        draft_path,
+        expected_parent=writing,
+        expected_parent_identity=writing_identity,
+    )
+
+    first_brief = build_meeting_brief(workspace, slug, as_of=as_of)
+    first_plan = manuscript_plan_from_brief(first_brief)
+    _assert_audit_directories(project, project_identity, writing, writing_identity)
+
+    draft_text = read_stable_direct_text(
+        draft_path,
+        expected_parent=writing,
+        expected_parent_identity=writing_identity,
+        max_bytes=4 * 1024 * 1024,
+    )
+    if (
+        direct_file_identity(
+            draft_path,
+            expected_parent=writing,
+            expected_parent_identity=writing_identity,
+        )
+        != draft_identity
+    ):
+        raise OSError("draft changed during stable read")
+    _assert_no_phi(draft_text)
+    parsed = parse_manuscript(draft_text)
+    draft_sha256 = hashlib.sha256(draft_text.encode("utf-8")).hexdigest()
+
+    second_brief = build_meeting_brief(workspace, slug, as_of=as_of)
+    second_plan = manuscript_plan_from_brief(second_brief)
+    if _canonical_plan(first_plan) != _canonical_plan(second_plan):
+        raise OSError("research state changed during manuscript audit")
+    if _selected_ids(first_brief) != _selected_ids(second_brief):
+        raise OSError("selected Idea IDs changed during manuscript audit")
+    result_inputs = load_result_inputs(project, project_identity)
+    audit = audit_parsed_manuscript(
+        parsed,
+        AuditContext(second_plan, _selected_ids(second_brief), result_inputs),
+        as_of=as_of.isoformat(),
+        project=second_plan.project,
+        draft_path=draft_path.relative_to(project).as_posix(),
+        draft_sha256=draft_sha256,
+    )
+
+    _assert_audit_directories(project, project_identity, writing, writing_identity)
+    if (
+        direct_file_identity(
+            draft_path,
+            expected_parent=writing,
+            expected_parent_identity=writing_identity,
+        )
+        != draft_identity
+    ):
+        raise OSError("draft changed during manuscript audit")
+    final_text = read_stable_direct_text(
+        draft_path,
+        expected_parent=writing,
+        expected_parent_identity=writing_identity,
+        max_bytes=4 * 1024 * 1024,
+    )
+    if hashlib.sha256(final_text.encode("utf-8")).hexdigest() != draft_sha256:
+        raise OSError("draft content changed during manuscript audit")
+    return audit
+
+
+def _safe_draft_path(project: Path, writing: Path, draft: Path) -> Path:
+    candidate = draft if draft.is_absolute() else project / draft
+    if candidate.suffix != ".md" or candidate.parent.resolve() != writing:
+        raise ValueError("draft must be a direct .md file below project writing/")
+    return candidate
+
+
+def _assert_audit_directories(
+    project: Path,
+    project_identity: tuple[int, int],
+    writing: Path,
+    writing_identity: tuple[int, int],
+) -> None:
+    assert_directory_identity(project, project_identity, context="project")
+    assert_directory_identity(writing, writing_identity, context="writing")
+
+
+def _assert_no_phi(draft_text: str) -> None:
+    lowered = draft_text.casefold()
+    if any(marker.casefold() in lowered for marker in _PHI_MARKERS):
+        raise PermissionError("PHI_SUSPECTED")
+
+
+def _canonical_plan(plan: ManuscriptPlan) -> bytes:
+    return json.dumps(
+        manuscript_plan_payload(plan),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _selected_ids(brief: object) -> tuple[str, ...]:
+    return tuple(brief.idea_state.selected_idea_ids)  # type: ignore[attr-defined]
+
+
+def manuscript_audit_payload(audit: ManuscriptAudit) -> dict[str, object]:
+    """Return the stable public projection of an audit, without input prose."""
+    return {
+        "schema_version": audit.schema_version,
+        "as_of": audit.as_of,
+        "project": {
+            "title": audit.project.title,
+            "slug": audit.project.slug,
+            "stage": audit.project.stage,
+            "state": audit.project.state,
+            "blockers": list(audit.project.blockers),
+        },
+        "draft_path": audit.draft_path,
+        "draft_sha256": audit.draft_sha256,
+        "status": audit.status,
+        "block_counts": [
+            {"kind": kind, "count": count} for kind, count in audit.block_counts
+        ],
+        "sections": [
+            {
+                "code": section.code,
+                "title": section.title,
+                "readiness": section.readiness,
+                "block_count": section.block_count,
+                "annotated_block_count": section.annotated_block_count,
+                "issue_count": section.issue_count,
+            }
+            for section in audit.sections
+        ],
+        "issues": [
+            {
+                "code": issue.code,
+                "severity": issue.severity,
+                "section": issue.section,
+                "block_index": issue.block_index,
+                "line": issue.line,
+                "claim_ids": list(issue.claim_ids),
+                "artifact_names": list(issue.artifact_names),
+                "message": issue.message,
+            }
+            for issue in audit.issues
+        ],
+        "used_claim_ids": list(audit.used_claim_ids),
+        "used_result_artifacts": list(audit.used_result_artifacts),
+        "boundaries": list(audit.boundaries),
+    }
+
+
+def render_manuscript_audit(audit: ManuscriptAudit) -> str:
+    """Render audit metadata and annotation findings without draft prose."""
+    lines = [
+        "# Manuscript audit",
+        "",
+        f"- Project: `{audit.project.slug}`",
+        f"- Draft: `{audit.draft_path}`",
+        f"- As of: {audit.as_of}",
+        f"- Status: `{audit.status}`",
+        "",
+        "## Sections",
+        "",
+        "| Section | Readiness | Blocks | Annotated | Issues |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+    for section in audit.sections:
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _markdown_cell(section.title),
+                    f"`{section.readiness}`",
+                    str(section.block_count),
+                    str(section.annotated_block_count),
+                    str(section.issue_count),
+                )
+            )
+            + " |"
+        )
+    lines.extend(("", "## Annotation kind counts", ""))
+    for kind, count in audit.block_counts:
+        lines.append(f"- `{kind}`: {count}")
+    lines.extend(("", "## Issues", ""))
+    if not audit.issues:
+        lines.append("- None.")
+    else:
+        for issue in audit.issues:
+            identifiers = ", ".join((*issue.claim_ids, *issue.artifact_names)) or "-"
+            location = f"line {issue.line}" if issue.line else "no line"
+            section = issue.section or "project"
+            lines.append(
+                f"- `{issue.code}` ({location}; {section}; IDs: {identifiers})"
+            )
+    lines.extend(("", "## Used evidence and results", ""))
+    lines.append("- Claims: " + (", ".join(audit.used_claim_ids) or "-"))
+    lines.append("- Result artifacts: " + (", ".join(audit.used_result_artifacts) or "-"))
+    lines.extend(("", "## Boundaries", ""))
+    lines.extend(f"- {boundary}" for boundary in audit.boundaries)
+    return "\n".join(lines) + "\n"
+
+
+def _markdown_cell(value: str) -> str:
+    return " ".join(value.splitlines()).replace("|", "\\|").strip()
 
 
 def _claim_index(plan: ManuscriptPlan) -> _ClaimIndex:

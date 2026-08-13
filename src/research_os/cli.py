@@ -35,6 +35,11 @@ from research_os.manuscript_plan import (
     manuscript_plan_payload,
     render_manuscript_plan,
 )
+from research_os.manuscript_audit import (
+    build_manuscript_audit,
+    manuscript_audit_payload,
+    render_manuscript_audit,
+)
 from research_os.pdf import extract_pdf
 from research_os.project import (
     create_project,
@@ -107,6 +112,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--format", choices=("markdown", "json"), default="markdown"
     )
     manuscript_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    manuscript_audit_parser = subparsers.add_parser(
+        "manuscript-audit",
+        help="只读审计带注释的论文草稿，不重写草稿或执行实验",
+    )
+    manuscript_audit_parser.add_argument("--project", required=True, help="课题 slug")
+    manuscript_audit_parser.add_argument("--draft", type=Path, required=True, help="writing/ 下的直接 .md 草稿")
+    manuscript_audit_parser.add_argument(
+        "--as-of", default="", help="审计截止日期 YYYY-MM-DD"
+    )
+    manuscript_audit_parser.add_argument(
+        "--format", choices=("markdown", "json"), default="markdown"
+    )
+    manuscript_audit_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     cycle_parser = subparsers.add_parser(
         "cycle", help="创建或恢复有界、可审计的科研循环"
@@ -848,6 +867,31 @@ def _run(args: argparse.Namespace) -> int:
         else:
             print(render_manuscript_plan(plan), end="")
         return 0
+    if args.command == "manuscript-audit":
+        if args.as_of:
+            try:
+                as_of = date.fromisoformat(args.as_of)
+            except ValueError as exc:
+                raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
+        else:
+            as_of = date.today()
+        audit = build_manuscript_audit(
+            args.workspace,
+            args.project,
+            args.draft,
+            as_of=as_of,
+        )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    manuscript_audit_payload(audit),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(render_manuscript_audit(audit), end="")
+        return 0 if audit.status == "pass" else 1
     if args.command == "kb":
         if args.kb_command == "doctor":
             report = inspect_knowledge_base(args.workspace)
