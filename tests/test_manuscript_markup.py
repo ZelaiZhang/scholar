@@ -336,3 +336,106 @@ def test_mid_block_annotation_is_invalid_without_splitting_the_block() -> None:
     assert parsed.syntax_issues == (
         MarkupIssue("INVALID_ANNOTATION", "Introduction", 1, 3),
     )
+
+
+def test_fences_require_at_most_three_leading_spaces_and_never_tabs() -> None:
+    parsed = parse_manuscript(
+        "## Methods\n"
+        "````\n"
+        "    ````\n"
+        "<!-- research-os:kind=method; idea=inside-four-spaces -->\n"
+        "\t````\n"
+        "<!-- research-os:kind=method; idea=inside-tab -->\n"
+        "````\n"
+        "<!-- research-os:kind=method; idea=idea-1 -->\n"
+        "Methods prose.\n"
+        "\n"
+        "    ```\n"
+        "\n"
+        "<!-- research-os:kind=method; idea=idea-2 -->\n"
+        "More methods prose.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Methods",
+            1,
+            9,
+            ManuscriptAnnotation("method", (), "idea-1", (), 8),
+        ),
+        ManuscriptBlock("Methods", 2, 11, None),
+        ManuscriptBlock(
+            "Methods",
+            3,
+            14,
+            ManuscriptAnnotation("method", (), "idea-2", (), 13),
+        ),
+    )
+    assert parsed.syntax_issues == ()
+
+
+def test_active_multiline_comment_ignores_fences_and_parses_trailing_text() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!--\n"
+        "```\n"
+        "editorial note --> trailing result text\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Results",
+            1,
+            5,
+            ManuscriptAnnotation("result", (), "", ("table-1.csv",), 2),
+        ),
+    )
+    assert parsed.syntax_issues == ()
+
+
+def test_malformed_multiline_annotation_stays_a_comment_without_consuming_pending() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!-- research-os:kind=fact; claims=claim-1\n"
+        "continuation that is not prose\n"
+        "-->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Results",
+            1,
+            6,
+            ManuscriptAnnotation("result", (), "", ("table-1.csv",), 2),
+        ),
+    )
+    assert parsed.syntax_issues == (
+        MarkupIssue("INVALID_ANNOTATION", "Results", 1, 3),
+    )
+
+
+def test_spaced_horizontal_rules_split_blocks_without_accepting_mixed_markers() -> None:
+    parsed = parse_manuscript(
+        "## Abstract\n"
+        "First block.\n"
+        "* * *\n"
+        "Second block.\n"
+        "- - -\n"
+        "Third block.\n"
+        "_ _ _ _\n"
+        "Fourth block.\n"
+        "\n"
+        "* - *\n"
+        "Still one ordinary block.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock("Abstract", 1, 2, None),
+        ManuscriptBlock("Abstract", 2, 4, None),
+        ManuscriptBlock("Abstract", 3, 6, None),
+        ManuscriptBlock("Abstract", 4, 8, None),
+        ManuscriptBlock("Abstract", 5, 10, None),
+    )

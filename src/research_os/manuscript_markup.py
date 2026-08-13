@@ -29,8 +29,10 @@ AUDITED_SECTIONS = frozenset(
     }
 )
 HEADING = re.compile(r"^(?P<level>#{1,6})[ \t]+(?P<title>.*)$")
-FENCE = re.compile(r"^[ \t]*(?P<marker>`{3,}|~{3,})")
-HORIZONTAL_RULE = re.compile(r"^[ \t]{0,3}(?:\*{3,}|-{3,}|_{3,})[ \t]*$")
+FENCE = re.compile(r"^ {0,3}(?P<marker>`{3,}|~{3,})")
+HORIZONTAL_RULE = re.compile(
+    r"^ {0,3}(?P<marker>[*_-])(?:[ \t]*(?P=marker)){2,}[ \t]*$"
+)
 HTML_COMMENT_START = re.compile(r"^[ \t]*<!--")
 
 
@@ -149,6 +151,15 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
         in_block = False
 
     for line_number, raw_line in enumerate(markdown.splitlines(), start=1):
+        if in_html_comment:
+            comment_end = raw_line.find("-->")
+            if comment_end == -1:
+                continue
+            in_html_comment = False
+            raw_line = raw_line[comment_end + 3 :]
+            if not raw_line.strip():
+                continue
+
         fence_match = FENCE.match(raw_line)
         if fence_marker is not None:
             if fence_match is not None:
@@ -164,11 +175,6 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             close_block()
             marker = fence_match.group("marker")
             fence_marker = (marker[0], len(marker))
-            continue
-
-        if in_html_comment:
-            if raw_line.rstrip().endswith("-->"):
-                in_html_comment = False
             continue
 
         heading_match = HEADING.fullmatch(raw_line)
@@ -189,7 +195,10 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             continue
 
         if raw_line.lstrip(" \t").startswith("<!-- research-os:"):
+            is_multiline_comment = "-->" not in raw_line
             if section is None:
+                if is_multiline_comment:
+                    in_html_comment = True
                 continue
             if in_block:
                 issues.append(
@@ -200,6 +209,8 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                         line_number,
                     )
                 )
+                if is_multiline_comment:
+                    in_html_comment = True
                 continue
             annotation = parse_annotation(raw_line, line=line_number)
             if annotation is None or pending is not None:
@@ -208,6 +219,8 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                         "INVALID_ANNOTATION", section, next_block_index(), line_number
                     )
                 )
+                if is_multiline_comment:
+                    in_html_comment = True
                 continue
             pending = annotation
             pending_section = section
@@ -215,10 +228,12 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             continue
 
         if HTML_COMMENT_START.match(raw_line) is not None:
-            if "-->" not in raw_line:
+            comment_end = raw_line.find("-->")
+            if comment_end == -1:
                 in_html_comment = True
                 continue
-            elif raw_line.rstrip().endswith("-->"):
+            raw_line = raw_line[comment_end + 3 :]
+            if not raw_line.strip():
                 continue
 
         if section is None:
