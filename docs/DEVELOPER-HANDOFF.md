@@ -385,8 +385,8 @@ git diff --check
 
 - 源码测试：`580 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；唯一 skip 为当前平台不允许替换已打开的只读文件。`compileall src tests`、`pip check`、`doctor`、`kb doctor`、两个写作/解读技能的 `quick_validate` 和 `git diff --check` 均退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
 - wheel 文件：`research_os-0.8.0-py3-none-any.whl`（临时构建目录，不写入源码 `dist/`）。
-- wheel SHA256：`9CCECD27FEF812951D4814D5EA8471E35A64233DFEE8BC7FC1D3E7E633D18C7E`。
-- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-rereview-771d6ab4b66f4d009503a8c81517f3ba\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
+- wheel SHA256：`D371EB83EB9C8EE3E7AB83C14055E63B5DF6B49EBB8AF69A92E4E390B4401775`。
+- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-final-a802b048fcd24ee2844cde6af35f1819\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
 - 安装后用户旅程：通过；从工作区根目录执行 README/技能记录的精确 `--draft projects/wheel-topic/writing/installed-draft.md --workspace .` 形式。旅程先确认围栏代码中的结果绑定与完成标记不能推进 Results，再以顶层精确独立行恢复；随后覆盖八节审计通过与确定性/不泄漏/不写入检查，并顺序协调修改结果文件和 manifest 哈希，确认旧解读绑定使审计退出 `1` 且报告 `SECTION_PARTIAL`，更新绑定后才恢复通过；最后仍验证 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
 - 最终独立 re-review：`APPROVE`，Critical `0`，Important `0`。审查者复跑了顶层结果 binding、围栏/缩进/外层注释反例、陈旧结果失效与重新绑定、`awaiting_human_decision + selected` 的 API/CLI 拒绝和字节稳定性，并确认合法 completed/awaiting 控制路径未回归。复核提交为 `08036321928b1a078ca744e0017fd038438244d7`。
 
