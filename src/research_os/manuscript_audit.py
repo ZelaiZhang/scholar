@@ -154,9 +154,11 @@ def audit_parsed_manuscript(
             valid_ids = _validate_fact_claims(block, claim_index, issues)
             used_claim_ids.update(valid_ids)
         elif annotation.kind == "limitation":
-            valid_ids = _validate_limitation_claims(block, claim_index, issues)
+            valid_ids, all_valid = _validate_limitation_claims(
+                block, claim_index, issues
+            )
             used_claim_ids.update(valid_ids)
-            if valid_ids:
+            if all_valid and block.section in _ALLOWED_SECTIONS[annotation.kind]:
                 valid_limitation = True
         elif annotation.kind in {"inference", "hypothesis"}:
             valid_ids = _validate_research_claims(block, claim_index, issues)
@@ -278,7 +280,7 @@ def _validate_fact_claims(
 
 def _validate_limitation_claims(
     block: ManuscriptBlock, index: _ClaimIndex, issues: list[ManuscriptAuditIssue]
-) -> tuple[str, ...]:
+) -> tuple[tuple[str, ...], bool]:
     valid: list[str] = []
     candidates = {
         **index.citable_facts,
@@ -299,7 +301,8 @@ def _validate_limitation_claims(
             issues.append(_issue("CLAIM_NOT_CITABLE", block.section, block.block_index, block.line, claim_ids=(claim_id,)))
         else:
             issues.append(_issue("UNKNOWN_CLAIM", block.section, block.block_index, block.line, claim_ids=(claim_id,)))
-    return tuple(valid)
+    valid_ids = tuple(valid)
+    return valid_ids, len(valid_ids) == len(block.annotation.claim_ids)
 
 
 def _validate_research_claims(
@@ -308,12 +311,13 @@ def _validate_research_claims(
     valid: list[str] = []
     assert block.annotation is not None
     for claim_id in block.annotation.claim_ids:
-        claim = index.research_statements.get(claim_id)
+        if claim_id in index.excluded:
+            issues.append(_issue("CLAIM_INVALID", block.section, block.block_index, block.line, claim_ids=(claim_id,)))
+            continue
+        claim = index.research_statements.get(claim_id) or index.conflicts.get(claim_id)
         if claim is not None and claim.claim_type == block.annotation.kind:
             valid.append(claim_id)
-        elif claim_id in index.excluded:
-            issues.append(_issue("CLAIM_INVALID", block.section, block.block_index, block.line, claim_ids=(claim_id,)))
-        elif claim is not None or claim_id in index.citable_facts or claim_id in index.open_facts or claim_id in index.conflicts:
+        elif claim is not None or claim_id in index.citable_facts or claim_id in index.open_facts:
             issues.append(_issue("CLAIM_KIND_MISMATCH", block.section, block.block_index, block.line, claim_ids=(claim_id,)))
         else:
             issues.append(_issue("UNKNOWN_CLAIM", block.section, block.block_index, block.line, claim_ids=(claim_id,)))

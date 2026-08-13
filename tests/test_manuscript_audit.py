@@ -260,6 +260,38 @@ def test_limitation_annotation_rejects_verified_fact_without_source_locator() ->
     assert "BAD-LIMIT" not in audit.used_claim_ids
 
 
+def test_mixed_limitation_claims_do_not_satisfy_limitation_gate() -> None:
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _document(
+                (
+                    "Limitations and Ethics",
+                    "<!-- research-os:kind=limitation; claims=FACT-1,UNKNOWN -->\nLimit.",
+                ),
+            )
+        ),
+        _context(),
+    )
+
+    assert {"UNKNOWN_CLAIM", "LIMITATION_MISSING"} <= set(_codes(audit))
+
+
+def test_limitation_in_disallowed_section_does_not_satisfy_limitation_gate() -> None:
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _document(
+                (
+                    "Methods",
+                    "<!-- research-os:kind=limitation; claims=FACT-1 -->\nLimit.",
+                ),
+            )
+        ),
+        _context(),
+    )
+
+    assert {"KIND_NOT_ALLOWED_IN_SECTION", "LIMITATION_MISSING"} <= set(_codes(audit))
+
+
 @pytest.mark.parametrize(
     ("claim_id", "field", "expected_code"),
     [
@@ -322,6 +354,54 @@ def test_research_statement_annotations_require_same_valid_type(
     )
 
     assert expected_code in _codes(audit)
+
+
+@pytest.mark.parametrize("kind", ["inference", "hypothesis"])
+def test_conflicted_research_statement_is_valid_at_its_exact_type(kind: str) -> None:
+    claim_id = f"CONFLICT-{kind.upper()}"
+    context = _context()
+    context = replace(
+        context,
+        plan=replace(context.plan, conflicts=(_claim(claim_id, kind, status="conflicted"),)),
+    )
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _valid_document(
+                ("Introduction", f"<!-- research-os:kind={kind}; claims={claim_id} -->\nStatement.")
+            )
+        ),
+        context,
+    )
+
+    assert audit.status == "pass"
+    assert claim_id in audit.used_claim_ids
+
+
+def test_conflicted_fact_and_opposite_type_are_not_valid_research_statements() -> None:
+    context = _context()
+    context = replace(
+        context,
+        plan=replace(
+            context.plan,
+            conflicts=(
+                _claim("CONFLICT-FACT", "fact", status="conflicted"),
+                _claim("CONFLICT-HYPOTHESIS", "hypothesis", status="conflicted"),
+            ),
+        ),
+    )
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _valid_document(
+                (
+                    "Introduction",
+                    "<!-- research-os:kind=inference; claims=CONFLICT-FACT,CONFLICT-HYPOTHESIS -->\nStatement.",
+                )
+            )
+        ),
+        context,
+    )
+
+    assert _codes(audit).count("CLAIM_KIND_MISMATCH") == 2
 
 
 def test_audit_requires_at_least_one_valid_limitation_annotation() -> None:
