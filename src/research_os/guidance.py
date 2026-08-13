@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 from research_os.evidence import load_ledger, validate_ledger
 from research_os.project import (
@@ -32,6 +37,9 @@ class StageView:
     progress: str
     status: str
     detail: str
+    artifact_path: str = ""
+    artifact_sha256: str = ""
+    dependency_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,10 +71,10 @@ def _document_progress(
     title: str,
     completion_marker: str,
     expected_project_identity: tuple[int, int],
-) -> str:
+) -> tuple[str, str]:
     path = project_path / filename
     if not path.is_file():
-        return "blocked"
+        return "blocked", "missing"
     actual = read_stable_direct_text(
         path,
         expected_parent=project_path,
@@ -75,10 +83,48 @@ def _document_progress(
     expected = template_content(template_name, None).replace(
         "{{PROJECT_TITLE}}", title
     )
+    digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
     if _normalized(actual) == _normalized(expected):
-        return "unstarted"
+        return "unstarted", digest
     marker = f"<!-- research-os:stage={completion_marker} -->"
-    return "complete" if marker in actual else "in_progress"
+    return ("complete" if marker in actual else "in_progress"), digest
+
+
+def validate_stage_documents(
+    project_path: Path,
+    expected_project_identity: tuple[int, int],
+    stages: tuple[StageView, ...],
+) -> None:
+    """Reject a mixed snapshot if any stage document changed after guidance."""
+    for stage in stages:
+        if not stage.artifact_path:
+            continue
+        path = project_path / stage.artifact_path
+        if stage.artifact_sha256 == "missing":
+            if path.exists():
+                raise OSError(f"stage document changed after capture: {path}")
+            continue
+        try:
+            actual = read_stable_direct_text(
+                path,
+                expected_parent=project_path,
+                expected_parent_identity=expected_project_identity,
+            )
+        except (OSError, ValueError) as exc:
+            raise OSError(f"stage document changed after capture: {path}") from exc
+        digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
+        if digest != stage.artifact_sha256:
+            raise OSError(f"stage document changed after capture: {path}")
+        if stage.code == "result_interpretation" and stage.dependency_sha256:
+            try:
+                _inputs, dependency_sha256 = _result_inputs(
+                    project_path,
+                    expected_project_identity,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise OSError("result inputs changed after stage capture") from exc
+            if dependency_sha256 != stage.dependency_sha256:
+                raise OSError("result inputs changed after stage capture")
 
 
 def _progress_status(progress: str) -> str:
@@ -104,21 +150,91 @@ def _linked_paper_card_count(
     return count
 
 
-def _result_inputs(project_path: Path) -> tuple[Path, ...]:
+_RESULT_EXTENSIONS = {".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml"}
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _result_inputs(
+    project_path: Path,
+    expected_project_identity: tuple[int, int],
+) -> tuple[tuple[Path, ...], str]:
     artifacts = project_path / "artifacts"
     if not artifacts.is_dir():
-        return ()
+        return (), "missing"
+    assert_directory_identity(
+        project_path,
+        expected_project_identity,
+        context="project",
+    )
+    artifacts_identity = directory_identity(artifacts)
+    manifest_path = artifacts / "results-manifest.yaml"
+    if not manifest_path.exists():
+        return (), "missing"
+    raw_text = read_stable_direct_text(
+        manifest_path,
+        expected_parent=artifacts,
+        expected_parent_identity=artifacts_identity,
+        max_bytes=1024 * 1024,
+    )
+    try:
+        raw = yaml.safe_load(raw_text)
+    except yaml.YAMLError as exc:
+        raise ValueError("results manifest is not valid YAML") from exc
+    if not isinstance(raw, dict) or set(raw) != {"schema_version", "results"}:
+        raise ValueError("results manifest must contain only schema_version and results")
+    if raw["schema_version"] != 1 or not isinstance(raw["results"], list):
+        raise ValueError("results manifest schema_version must be 1 and results a list")
     inputs: list[Path] = []
-    for path in artifacts.rglob("*"):
-        if not path.is_file() or path.name == ".gitkeep":
-            continue
-        lowered = path.name.lower()
-        if lowered.endswith(".provenance.json") or lowered.startswith(
-            ("evidence-check", "evidence-validation")
+    seen: set[str] = set()
+    required = {"path", "sha256", "source_repository", "generated_at"}
+    for index, item in enumerate(raw["results"], 1):
+        if not isinstance(item, dict) or set(item) != required:
+            raise ValueError(f"results manifest entry {index} has invalid fields")
+        relative = item["path"]
+        digest = item["sha256"]
+        repository = item["source_repository"]
+        generated_at = item["generated_at"]
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or Path(relative).name != relative
+            or relative in seen
         ):
-            continue
+            raise ValueError(f"results manifest entry {index} has an unsafe path")
+        if Path(relative).suffix.lower() not in _RESULT_EXTENSIONS:
+            raise ValueError(f"results manifest entry {index} has an unsupported format")
+        if not isinstance(digest, str) or not _SHA256_PATTERN.fullmatch(digest):
+            raise ValueError(f"results manifest entry {index} has an invalid sha256")
+        if not isinstance(repository, str) or not repository.strip():
+            raise ValueError(
+                f"results manifest entry {index} needs source_repository provenance"
+            )
+        if not isinstance(generated_at, str) or not generated_at.strip():
+            raise ValueError(f"results manifest entry {index} needs generated_at")
+        try:
+            datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"results manifest entry {index} has invalid generated_at"
+            ) from exc
+        path = artifacts / relative
+        actual_text = read_stable_direct_text(
+            path,
+            expected_parent=artifacts,
+            expected_parent_identity=artifacts_identity,
+        )
+        actual_digest = hashlib.sha256(actual_text.encode("utf-8")).hexdigest()
+        if actual_digest != digest:
+            raise ValueError(f"result artifact hash mismatch: {relative}")
+        seen.add(relative)
         inputs.append(path)
-    return tuple(sorted(inputs))
+    assert_directory_identity(artifacts, artifacts_identity, context="artifacts")
+    assert_directory_identity(
+        project_path,
+        expected_project_identity,
+        context="project",
+    )
+    return tuple(inputs), hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
 
 def _markdown_outputs(folder: Path) -> tuple[Path, ...]:
@@ -207,7 +323,7 @@ def guide_project(
     except (OSError, ValueError) as exc:
         ledger_error = str(exc)
 
-    brief_progress = _document_progress(
+    brief_progress, brief_sha256 = _document_progress(
         project_path,
         "00-research-brief.md",
         "research-brief.md",
@@ -221,7 +337,7 @@ def guide_project(
     )
     raw_claims = ledger.get("claims", [])
     claim_count = len(raw_claims) if isinstance(raw_claims, list) else 0
-    literature_progress = _document_progress(
+    literature_progress, literature_sha256 = _document_progress(
         project_path,
         "03-literature-review.md",
         "literature-review.md",
@@ -230,7 +346,7 @@ def guide_project(
         project_identity,
     )
     literature_ready = literature_progress == "complete"
-    idea_progress = _document_progress(
+    idea_progress, idea_sha256 = _document_progress(
         project_path,
         "04-idea-candidates.md",
         "idea-candidates.md",
@@ -277,7 +393,7 @@ def guide_project(
         if cycle_manifest is not None
         else legacy_idea_ready
     )
-    design_progress = _document_progress(
+    design_progress, design_sha256 = _document_progress(
         project_path,
         "05-experiment-design.md",
         "experiment-design.md",
@@ -286,7 +402,7 @@ def guide_project(
         project_identity,
     )
     design_ready = design_progress == "complete"
-    result_progress = _document_progress(
+    result_progress, result_sha256 = _document_progress(
         project_path,
         "06-result-analysis.md",
         "result-analysis.md",
@@ -295,7 +411,10 @@ def guide_project(
         project_identity,
     )
     result_ready = result_progress == "complete"
-    result_inputs = _result_inputs(project_path)
+    result_inputs, result_inputs_sha256 = _result_inputs(
+        project_path,
+        project_identity,
+    )
     manuscripts = _markdown_outputs(project_path / "writing")
     reviews = _markdown_outputs(project_path / "reviews")
 
@@ -388,6 +507,8 @@ def guide_project(
                 "in_progress": "已编辑，尚未通过质量门禁",
                 "complete": "研究简报已通过质量门禁",
             }[brief_progress],
+            "00-research-brief.md",
+            brief_sha256,
         ),
         StageView(
             "source_intake",
@@ -417,6 +538,8 @@ def guide_project(
             ),
             synthesis_status,
             evidence_detail,
+            "03-literature-review.md",
+            literature_sha256,
         ),
         StageView(
             "idea_review",
@@ -424,6 +547,8 @@ def guide_project(
             idea_stage_progress,
             idea_stage_status,
             idea_stage_detail,
+            "04-idea-candidates.md",
+            idea_sha256,
         ),
         StageView(
             "experiment_design",
@@ -436,6 +561,8 @@ def guide_project(
                 "in_progress": "已编辑，尚未通过设计门禁",
                 "complete": "实验设计已通过质量门禁",
             }[design_progress],
+            "05-experiment-design.md",
+            design_sha256,
         ),
         StageView(
             "result_interpretation",
@@ -443,6 +570,9 @@ def guide_project(
             result_stage_progress,
             result_status,
             result_detail,
+            "06-result-analysis.md",
+            result_sha256,
+            result_inputs_sha256,
         ),
         StageView(
             "manuscript_writing",

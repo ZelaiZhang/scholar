@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import shutil
@@ -331,6 +332,27 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     assert len(meeting_payload["discussion_questions"]) <= 3
     assert len(meeting_payload["actions"]) <= 3
     assert workspace_bytes(workspace) == meeting_before
+    (project / "05-experiment-design.md").write_text(
+        "# Experiment design\n\nExternally executable design.\n\n"
+        "<!-- research-os:stage=design-complete -->\n",
+        encoding="utf-8",
+    )
+    result_path = project / "artifacts" / "aggregate-results.csv"
+    result_path.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    result_sha256 = hashlib.sha256(result_path.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {result_sha256}\n"
+        "    source_repository: installed-wheel-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    (project / "06-result-analysis.md").write_text(
+        "# Result analysis\n\nConservative aggregate interpretation.\n\n"
+        "<!-- research-os:stage=result-complete -->\n",
+        encoding="utf-8",
+    )
     manuscript_args = [
         "manuscript-plan",
         "--project",
@@ -356,7 +378,7 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     code, guide = run_cli(
         ["guide", "--project", "wheel-topic", "--workspace", str(workspace)]
     )
-    assert code == 0 and "$experiment-advisor" in guide, guide
+    assert code == 0 and "$manuscript-assistant" in guide, guide
     assert guide.count("## 下一步") == 1
     assert "## 方法学参考" in guide
     code, final_doctor = run_cli(["doctor", "--workspace", str(workspace)])

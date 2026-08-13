@@ -281,8 +281,8 @@ def _section_readiness(
         idea for idea in brief.ideas if idea.idea_id in selected_ids
     )
     has_selected_idea = bool(selected_ids) and bool(selected_ideas)
-    has_medical_safety_boundary = not has_selected_idea or all(
-        idea.medical_safety_risks for idea in selected_ideas
+    has_medical_safety_boundary = not brief.ideas or all(
+        idea.medical_safety_risks for idea in brief.ideas
     )
     brief_complete = progress.get("problem_definition") == "complete"
     evidence_complete = progress.get("evidence_synthesis") == "complete"
@@ -328,7 +328,7 @@ def _section_readiness(
             claim_ids=citation_ids,
             artifact_paths=(
                 "04-idea-candidates.md",
-                "07-result-interpretation.md",
+                "06-result-analysis.md",
                 "02-evidence-ledger.yaml",
             ),
         ),
@@ -366,12 +366,12 @@ def _section_readiness(
         "experiments": _readiness(
             code="experiments",
             requirements=(design_requirement, result_input_requirement),
-            artifact_paths=("05-experiment-design.md", "06-result-inputs/"),
+            artifact_paths=("05-experiment-design.md", "artifacts/"),
         ),
         "results": _readiness(
             code="results",
             requirements=(result_input_requirement, result_complete_requirement),
-            artifact_paths=("06-result-inputs/", "07-result-interpretation.md"),
+            artifact_paths=("artifacts/", "06-result-analysis.md"),
         ),
         "limitations_ethics": _readiness(
             code="limitations_ethics",
@@ -400,7 +400,7 @@ def _section_readiness(
             claim_ids=citation_ids,
             artifact_paths=(
                 "04-idea-candidates.md",
-                "07-result-interpretation.md",
+                "06-result-analysis.md",
                 "02-evidence-ledger.yaml",
             ),
         ),
@@ -429,8 +429,6 @@ def manuscript_plan_from_brief(brief: MeetingBrief) -> ManuscriptPlan:
         brief,
         citation_candidates=citation_candidates,
     )
-    by_code = {section.code: section for section in sections}
-    has_selected_idea = bool(brief.idea_state.selected_idea_ids)
     if brief.excluded_claims:
         overall_status = "blocked"
         action = ManuscriptAction(
@@ -442,12 +440,26 @@ def manuscript_plan_from_brief(brief: MeetingBrief) -> ManuscriptPlan:
                 '02-evidence-ledger.yaml" --workspace .'
             ),
         )
-    elif (
-        citation_candidates
-        and has_selected_idea
-        and by_code["introduction"].status == "ready"
-        and by_code["related_work"].status == "ready"
-    ):
+    elif not citation_candidates:
+        overall_status = "blocked"
+        if brief.actions:
+            upstream = brief.actions[0]
+            action = ManuscriptAction(
+                code="ADVANCE_UPSTREAM_GATE",
+                reason=upstream.rationale,
+                target=upstream.expected_artifact,
+                command=upstream.command,
+            )
+        else:
+            action = ManuscriptAction(
+                code="ADVANCE_UPSTREAM_GATE",
+                reason="Build at least one verified, locator-bound fact before writing.",
+                target="02-evidence-ledger.yaml",
+                command=(
+                    f"research-os guide --project {brief.project.slug} --workspace ."
+                ),
+            )
+    elif all(section.status == "ready" for section in sections):
         overall_status = "ready_for_outline"
         action = ManuscriptAction(
             code="DRAFT_EVIDENCE_OUTLINE",

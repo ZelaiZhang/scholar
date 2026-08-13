@@ -284,6 +284,23 @@ def test_excluded_claims_make_evidence_repair_the_only_next_action() -> None:
     assert plan.next_action.command.startswith("research-os validate-ledger ")
 
 
+def test_missing_verified_citation_blocks_overall_readiness() -> None:
+    brief = replace(
+        _brief(),
+        supported_claims=(),
+        conflicted_claims=(),
+        excluded_claims=(),
+        open_claims=(_claim("C002", claim_type="fact", status="unverified"),),
+    )
+
+    plan = manuscript_plan_from_brief(brief)
+
+    assert plan.citation_candidates == ()
+    assert [claim.claim_id for claim in plan.open_facts] == ["C002"]
+    assert plan.overall_status == "blocked"
+    assert plan.next_action.code == "ADVANCE_UPSTREAM_GATE"
+
+
 def test_upstream_action_reuses_the_validated_dashboard_action() -> None:
     brief = replace(
         _brief_with_stage_progress(
@@ -334,6 +351,66 @@ def test_ready_outline_has_one_fixed_evidence_bound_writing_action() -> None:
     )
 
 
+def test_outline_action_waits_until_every_upstream_section_gate_is_ready() -> None:
+    brief = replace(
+        _brief_with_stage_progress(
+            {
+                "problem_definition": "complete",
+                "evidence_synthesis": "complete",
+                "idea_review": "complete",
+            },
+            selected=True,
+        ),
+        actions=(
+            DashboardAction(
+                code="DESIGN_EXPERIMENT",
+                priority=1,
+                category="research",
+                rationale="Complete experiment design before writing.",
+                expected_artifact="05-experiment-design.md",
+                command="$experiment-advisor 为 topic-a 设计外部实验",
+            ),
+        ),
+    )
+
+    plan = manuscript_plan_from_brief(brief)
+
+    assert next(item for item in plan.sections if item.code == "results").status == (
+        "blocked"
+    )
+    assert plan.overall_status == "partial"
+    assert plan.next_action.code == "ADVANCE_UPSTREAM_GATE"
+    assert plan.next_action.command == "$experiment-advisor 为 topic-a 设计外部实验"
+
+
+def test_active_shortlisted_medical_idea_also_requires_a_safety_boundary() -> None:
+    brief = replace(
+        _brief_with_stage_progress(
+            {"problem_definition": "complete", "evidence_synthesis": "complete"},
+            selected=False,
+        ),
+        idea_state=replace(
+            _brief().idea_state,
+            run_id="run-20260813T000000000000Z-00000000",
+            cycle_state="awaiting_human_decision",
+            human_decision_required=True,
+        ),
+        ideas=(
+            replace(
+                _selected_idea(medical_safety=False),
+                status="shortlisted",
+                decision_reason="",
+            ),
+        ),
+    )
+
+    plan = manuscript_plan_from_brief(brief)
+    ethics = next(item for item in plan.sections if item.code == "limitations_ethics")
+
+    assert ethics.status == "partial"
+    assert "MISSING_MEDICAL_SAFETY_BOUNDARY" in ethics.reason_codes
+
+
 def test_public_payload_is_explicit_and_does_not_leak_snapshot_internals() -> None:
     payload = manuscript_plan_payload(manuscript_plan_from_brief(_brief()))
     encoded = json.dumps(payload, ensure_ascii=False)
@@ -355,6 +432,8 @@ def test_public_payload_is_explicit_and_does_not_leak_snapshot_internals() -> No
     assert payload["citation_candidates"][0]["support"] == [
         {"source_id": "src-public", "locator": "p. 7, Results"}
     ]
+    results = next(item for item in payload["sections"] if item["code"] == "results")
+    assert results["artifact_paths"] == ["artifacts/", "06-result-analysis.md"]
 
 
 def test_markdown_renders_evidence_groups_action_and_boundaries() -> None:

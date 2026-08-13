@@ -1,7 +1,13 @@
 import json
+import hashlib
+from datetime import date
 from pathlib import Path
 
+import pytest
+
+import research_os.dashboard as dashboard_module
 from research_os.cli import main
+from research_os.manuscript_plan import build_manuscript_plan
 from research_os.project import create_project, link_project_sources
 from research_os.sources import SourceRegistry
 
@@ -131,3 +137,58 @@ def test_manuscript_plan_broken_evidence_returns_two(tmp_path: Path, capsys) -> 
         ]
     ) == 2
     assert capsys.readouterr().err
+
+
+def test_manuscript_plan_rejects_stage_document_changed_after_guide(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _write_fixture(tmp_path)
+    result_path = project / "06-result-analysis.md"
+    result_path.write_text(
+        "# Result analysis\n\nReviewed.\n\n"
+        "<!-- research-os:stage=result-complete -->\n",
+        encoding="utf-8",
+    )
+    original = dashboard_module.guide_project
+
+    def changing_guide(*args, **kwargs):
+        report = original(*args, **kwargs)
+        result_path.write_text(
+            "# Result analysis\n\nChanged after stage capture.\n",
+            encoding="utf-8",
+        )
+        return report
+
+    monkeypatch.setattr(dashboard_module, "guide_project", changing_guide)
+
+    with pytest.raises(OSError, match="stage document"):
+        build_manuscript_plan(tmp_path, project.name, as_of=date(2026, 8, 13))
+
+
+def test_manuscript_plan_rejects_result_inputs_changed_after_guide(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _write_fixture(tmp_path)
+    result_path = project / "artifacts" / "aggregate-results.csv"
+    result_path.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    digest = hashlib.sha256(result_path.read_bytes()).hexdigest()
+    manifest_path = project / "artifacts" / "results-manifest.yaml"
+    manifest_path.write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    original = dashboard_module.guide_project
+
+    def changing_guide(*args, **kwargs):
+        report = original(*args, **kwargs)
+        manifest_path.write_text("schema_version: 1\nresults: []\n", encoding="utf-8")
+        return report
+
+    monkeypatch.setattr(dashboard_module, "guide_project", changing_guide)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_plan(tmp_path, project.name, as_of=date(2026, 8, 13))

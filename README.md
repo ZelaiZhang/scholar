@@ -64,7 +64,7 @@
 ```markdown
 | Section | Status | Missing gates | Evidence | Artifacts |
 | Introduction | `ready` | - | C001 | 00-research-brief.md, 02-evidence-ledger.yaml |
-| Results | `blocked` | Import external result inputs... | - | 06-result-inputs/, 07-result-interpretation.md |
+| Results | `blocked` | Import external result inputs... | - | artifacts/, 06-result-analysis.md |
 
 - **C001** `[fact]` `[verified]`：公开基准报告了该结果
   - 支持: `src-...` @ p. 4, Table 2
@@ -246,6 +246,19 @@ projects/<slug>/artifacts/
 ```
 
 再次运行 `guide`，它会推荐 `$result-interpreter`。不要把真实病例、姓名、住院号、联系方式或原始可识别健康数据放进本工作区。
+
+结果文件必须通过 `artifacts/results-manifest.yaml` 显式登记；README、日志和未登记文件不会被当成实验结果。当前只接受文本型 `.csv`、`.tsv`、`.json`、`.jsonl`、`.yaml` 或 `.yml` 聚合结果，每条记录必须包含文件 SHA256、独立实验仓库标识和生成时间：
+
+```yaml
+schema_version: 1
+results:
+  - path: aggregate-results.csv
+    sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    source_repository: public-experiment-repository
+    generated_at: "2026-08-13T00:00:00Z"
+```
+
+文件必须直接位于 `artifacts/`，链接、目录联接、未知格式、哈希漂移和清单中途替换都会失败关闭。该清单只证明“这是研究者声明的外部聚合输入及其字节版本”，不证明统计正确或临床效用；结论仍需 `$result-interpreter` 保守检查。
 
 ## 证据账本
 

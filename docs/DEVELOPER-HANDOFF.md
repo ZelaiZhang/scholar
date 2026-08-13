@@ -44,7 +44,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 
-截至本文档更新，v0.7.0 完整测试为 `309 passed`（warnings-as-errors）；独立安装的 `research_os-0.7.0-py3-none-any.whl` 已完成全用户旅程，发布候选 SHA256 为 `1A933F4E01983884574CB6D59C995B69EB7CA272282987D38CA6E93ABC2677D6`。后续提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+截至本文档更新，v0.7.0 完整测试为 `315 passed`（warnings-as-errors）；独立 wheel 的最终 SHA256 以最后一次发布核验记录为准。后续提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用先前结果。
 
 ## 3. 系统总览
 
@@ -515,6 +515,7 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 5. 医疗 Idea 必须显式包含 `medical_safety_risks` 才能通过伦理边界要求；离线结果不被解释为临床效用；
 6. 公共 JSON schema version 1 逐字段序列化，不使用 `asdict`，因此不会随内部 dataclass 扩展泄漏 snapshot token、目录/文件 identity；
 7. 固定 `--as-of` 且输入字节不变时 Markdown/JSON 完全确定，命令执行前后工作区字节不变。
+8. `artifacts/results-manifest.yaml` 是结果输入的唯一登记边界；条目必须给出直接子文件、支持的文本格式、SHA256、`source_repository` 和 `generated_at`。任意 README/日志/未登记文件不得推进 Results，清单、结果或阶段文档在快照期间变化会失败关闭。
 
 命令：
 

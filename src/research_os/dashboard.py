@@ -16,7 +16,12 @@ from research_os.dashboard_risks import (
     evaluate_dashboard_risks,
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
-from research_os.guidance import GuideReport, StageView, guide_project
+from research_os.guidance import (
+    GuideReport,
+    StageView,
+    guide_project,
+    validate_stage_documents,
+)
 from research_os.ideas import load_idea_archive
 from research_os.io import (
     assert_directory_identity,
@@ -509,5 +514,6 @@ def build_project_dashboard(
         actions=_dashboard_actions(guide, risks),
         stages=guide.stages,
     )
+    validate_stage_documents(project, project_identity, guide.stages)
     assert_directory_identity(project, project_identity, context="project")
     return dashboard

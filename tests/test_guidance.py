@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -152,8 +153,16 @@ def test_result_artifact_recommends_conservative_interpretation(
     tmp_path: Path,
 ) -> None:
     project = create_progressed_project_through_design(tmp_path)
-    (project / "artifacts" / "aggregate-results.csv").write_text(
-        "metric,value\naccuracy,0.8\n", encoding="utf-8"
+    result = project / "artifacts" / "aggregate-results.csv"
+    result.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    digest = hashlib.sha256(result.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
     )
 
     report = guide_project(tmp_path, project.name)
@@ -161,6 +170,29 @@ def test_result_artifact_recommends_conservative_interpretation(
     assert report.next_action.skill == "result-interpreter"
     assert report.next_action.target == "06-result-analysis.md"
     assert "$result-interpreter" in report.next_action.command
+
+
+def test_unmanifested_or_documentation_artifacts_are_not_result_inputs(
+    tmp_path: Path,
+) -> None:
+    project = create_progressed_project_through_design(tmp_path)
+    (project / "artifacts" / "README.txt").write_text(
+        "Documentation only.", encoding="utf-8"
+    )
+    (project / "artifacts" / "untracked-results.csv").write_text(
+        "metric,value\naccuracy,0.8\n", encoding="utf-8"
+    )
+    (project / "06-result-analysis.md").write_text(
+        "# Result analysis\n\nPremature marker.\n\n"
+        "<!-- research-os:stage=result-complete -->\n",
+        encoding="utf-8",
+    )
+
+    report = guide_project(tmp_path, project.name)
+    stage = next(item for item in report.stages if item.code == "result_interpretation")
+
+    assert stage.progress == "unstarted"
+    assert report.next_action.skill is None
 
 
 def test_render_guide_contains_exactly_one_next_action(tmp_path: Path) -> None:

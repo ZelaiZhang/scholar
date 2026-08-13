@@ -17,7 +17,7 @@ from research_os.cycle import (
     validate_cycle_artifacts,
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
-from research_os.guidance import StageView
+from research_os.guidance import StageView, validate_stage_documents
 from research_os.ideas import load_idea_archive
 from research_os.io import (
     assert_directory_identity,
@@ -720,6 +720,7 @@ def build_meeting_brief(
         open_claims=open_tuple,
         ideas=ideas,
     )
+    validate_stage_documents(project, project_identity, snapshot.stages)
     assert_directory_identity(project, project_identity, context="project")
     idea_state = BriefIdeaState(
         run_id=snapshot.idea.run_id,
