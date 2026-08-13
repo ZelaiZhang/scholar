@@ -882,8 +882,10 @@ def _run(args: argparse.Namespace) -> int:
                 args.draft,
                 as_of=as_of,
             )
-        except PermissionError:
-            raise PermissionError("PHI_SUSPECTED") from None
+        except PermissionError as exc:
+            if str(exc) == "PHI_SUSPECTED":
+                raise PermissionError("PHI_SUSPECTED") from None
+            raise ValueError("MANUSCRIPT_AUDIT_INPUT_ERROR") from None
         except (UnicodeError, ValueError, FileNotFoundError):
             raise ValueError("MANUSCRIPT_AUDIT_INPUT_ERROR") from None
         except OSError:

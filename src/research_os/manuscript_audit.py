@@ -80,6 +80,7 @@ _STATE_FILES = (
     "knowledge-profile.yaml",
 )
 _STATE_DIRECTORIES = ("ideas", "cycles")
+_STATE_CONTROL_FILES = (("ideas", "archive.yaml"), ("cycles", "active-run.txt"))
 
 
 @dataclass(frozen=True)
@@ -353,16 +354,15 @@ def build_manuscript_audit(
         draft_sha256=draft_sha256,
     )
 
-    _assert_audit_directories(project, project_identity, writing, writing_identity)
-    if (
-        direct_file_identity(
-            draft_path,
-            expected_parent=writing,
-            expected_parent_identity=writing_identity,
-        )
-        != draft_identity
+    final_state = _research_state_snapshot(
+        workspace, slug, project, project_identity, as_of
+    )
+    if second_state.fingerprint != final_state.fingerprint:
+        raise OSError("research state changed during manuscript audit")
+    if _result_fingerprint(second_state.result_inputs) != _result_fingerprint(
+        final_state.result_inputs
     ):
-        raise OSError("draft changed during manuscript audit")
+        raise OSError("result inputs changed during manuscript audit")
     final_text = read_stable_direct_text(
         draft_path,
         expected_parent=writing,
@@ -380,16 +380,16 @@ def build_manuscript_audit(
         != draft_identity
     ):
         raise OSError("draft changed during final read")
-    _assert_audit_directories(project, project_identity, writing, writing_identity)
-    final_state = _research_state_snapshot(
-        workspace, slug, project, project_identity, as_of
-    )
-    if second_state.fingerprint != final_state.fingerprint:
-        raise OSError("research state changed during manuscript audit")
-    if _result_fingerprint(second_state.result_inputs) != _result_fingerprint(
-        final_state.result_inputs
+    if (
+        direct_file_identity(
+            draft_path,
+            expected_parent=writing,
+            expected_parent_identity=writing_identity,
+        )
+        != draft_identity
     ):
-        raise OSError("result inputs changed during manuscript audit")
+        raise OSError("draft changed after final identity check")
+    _assert_audit_directories(project, project_identity, writing, writing_identity)
     return audit
 
 
@@ -492,6 +492,43 @@ def _research_input_fingerprint(
         path = project / name
         directories.append((name, directory_identity(path) if path.exists() else None))
 
+    controls: list[tuple[str, tuple[int, int], tuple[int, int], str]] = []
+    for parent_name, name in _STATE_CONTROL_FILES:
+        parent = project / parent_name
+        if not parent.exists():
+            continue
+        parent_identity = directory_identity(parent)
+        path = parent / name
+        if not path.exists():
+            continue
+        identity = direct_file_identity(
+            path,
+            expected_parent=parent,
+            expected_parent_identity=parent_identity,
+        )
+        content = read_stable_direct_text(
+            path,
+            expected_parent=parent,
+            expected_parent_identity=parent_identity,
+        )
+        if (
+            direct_file_identity(
+                path,
+                expected_parent=parent,
+                expected_parent_identity=parent_identity,
+            )
+            != identity
+        ):
+            raise OSError("research state changed while fingerprinting")
+        controls.append(
+            (
+                f"{parent_name}/{name}",
+                parent_identity,
+                identity,
+                hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            )
+        )
+
     cycle: object = None
     if (project / "cycles").exists():
         try:
@@ -517,7 +554,12 @@ def _research_input_fingerprint(
             }
     assert_directory_identity(project, project_identity, context="project")
     return _canonical_json_bytes(
-        {"files": files, "directories": directories, "cycle": cycle}
+        {
+            "files": files,
+            "directories": directories,
+            "controls": controls,
+            "cycle": cycle,
+        }
     )
 
 

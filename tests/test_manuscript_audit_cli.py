@@ -409,6 +409,30 @@ def test_builder_detects_cycle_directory_identity_replacement(tmp_path: Path, mo
         build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
 
 
+@pytest.mark.parametrize("relative", ("ideas/archive.yaml", "cycles/active-run.txt"))
+def test_builder_detects_direct_control_file_identity_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    brief = audit_module.build_meeting_brief(tmp_path, project.name, as_of=date(2026, 8, 13))
+    control = project / relative
+    control.parent.mkdir(exist_ok=True)
+    control.write_text("control\n", encoding="utf-8")
+    original_parse = audit_module.parse_manuscript
+
+    def replace_control_then_parse(content: str):
+        replacement = control.with_name(f"replacement-{control.name}")
+        replacement.write_bytes(control.read_bytes())
+        os.replace(replacement, control)
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", replace_control_then_parse)
+    monkeypatch.setattr(audit_module, "build_meeting_brief", lambda *_args, **_kwargs: brief)
+
+    with pytest.raises(OSError, match="research state"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
 def test_builder_detects_selected_idea_drift_when_plan_payload_is_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -543,6 +567,32 @@ def test_builder_detects_draft_replacement_after_pre_final_identity_check(
         build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
 
 
+@pytest.mark.parametrize("same_content", (True, False))
+def test_builder_rechecks_draft_after_third_state_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, same_content: bool
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    original_snapshot = audit_module._research_state_snapshot
+    calls = 0
+
+    def replace_after_final_snapshot(*args: object, **kwargs: object):
+        nonlocal calls
+        snapshot = original_snapshot(*args, **kwargs)
+        calls += 1
+        if calls == 3:
+            replacement = draft.with_name("replacement.md")
+            replacement.write_bytes(
+                draft.read_bytes() if same_content else b"## Abstract\nchanged\n"
+            )
+            os.replace(replacement, draft)
+        return snapshot
+
+    monkeypatch.setattr(audit_module, "_research_state_snapshot", replace_after_final_snapshot)
+
+    with pytest.raises(OSError):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
 def test_public_payload_and_renderer_exclude_manuscript_prose_and_identities() -> None:
     audit = _audit()
 
@@ -664,6 +714,31 @@ def test_cli_maps_non_phi_audit_errors_without_echoing_exception(
     assert "artifact-secret" not in captured
     assert "/poisoned/path" not in captured
     assert "MANUSCRIPT_AUDIT_" in captured
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_code"),
+    (
+        (PermissionError("PHI_SUSPECTED"), "PHI_SUSPECTED"),
+        (PermissionError("ordinary /poisoned/path"), "MANUSCRIPT_AUDIT_INPUT_ERROR"),
+    ),
+)
+def test_cli_only_preserves_the_exact_phi_permission_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: PermissionError,
+    expected_code: str,
+) -> None:
+    def fail(*_args: object, **_kwargs: object):
+        raise error
+
+    monkeypatch.setattr(cli_module, "build_manuscript_audit", fail)
+
+    assert main(["manuscript-audit", "--project", "public-project", "--draft", "writing/draft.md", "--workspace", str(tmp_path)]) == 2
+    captured = capsys.readouterr().err
+    assert expected_code in captured
+    assert "/poisoned/path" not in captured
 
 
 def test_cli_phi_error_is_exit_two_without_sensitive_echo(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
