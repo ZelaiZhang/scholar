@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-
-import yaml
 
 from research_os.evidence import load_ledger, validate_ledger
 from research_os.project import (
@@ -24,6 +20,7 @@ from research_os.io import (
     directory_identity,
     read_stable_direct_text,
 )
+from research_os.result_inputs import load_result_inputs
 from research_os.knowledge_recommend import (
     KnowledgeRecommendation,
     recommend_for_project,
@@ -138,10 +135,10 @@ def validate_stage_documents(
             raise OSError(f"stage document changed after capture: {path}")
         if stage.code == "result_interpretation" and stage.dependency_sha256:
             try:
-                _inputs, dependency_sha256 = _result_inputs(
+                dependency_sha256 = load_result_inputs(
                     project_path,
                     expected_project_identity,
-                )
+                ).token
             except (OSError, UnicodeError, ValueError) as exc:
                 raise OSError("result inputs changed after stage capture") from exc
             if dependency_sha256 != stage.dependency_sha256:
@@ -169,144 +166,6 @@ def _linked_paper_card_count(
         if any(source_id in text for source_id in source_ids):
             count += 1
     return count
-
-
-_RESULT_EXTENSIONS = {".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml"}
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _result_inputs(
-    project_path: Path,
-    expected_project_identity: tuple[int, int],
-) -> tuple[tuple[Path, ...], str]:
-    artifacts = project_path / "artifacts"
-    if not artifacts.is_dir():
-        return (), "missing"
-    assert_directory_identity(
-        project_path,
-        expected_project_identity,
-        context="project",
-    )
-    artifacts_identity = directory_identity(artifacts)
-    manifest_path = artifacts / "results-manifest.yaml"
-    if not manifest_path.exists():
-        return (), "missing"
-    manifest_identity_before = direct_file_identity(
-        manifest_path,
-        expected_parent=artifacts,
-        expected_parent_identity=artifacts_identity,
-    )
-    raw_text = read_stable_direct_text(
-        manifest_path,
-        expected_parent=artifacts,
-        expected_parent_identity=artifacts_identity,
-        max_bytes=1024 * 1024,
-    )
-    manifest_identity = direct_file_identity(
-        manifest_path,
-        expected_parent=artifacts,
-        expected_parent_identity=artifacts_identity,
-    )
-    if manifest_identity != manifest_identity_before:
-        raise OSError("results manifest changed during validation")
-    try:
-        raw = yaml.safe_load(raw_text)
-    except yaml.YAMLError as exc:
-        raise ValueError("results manifest is not valid YAML") from exc
-    if not isinstance(raw, dict) or set(raw) != {"schema_version", "results"}:
-        raise ValueError("results manifest must contain only schema_version and results")
-    if raw["schema_version"] != 1 or not isinstance(raw["results"], list):
-        raise ValueError("results manifest schema_version must be 1 and results a list")
-    inputs: list[Path] = []
-    input_identities: list[tuple[int, int]] = []
-    seen: set[str] = set()
-    required = {"path", "sha256", "source_repository", "generated_at"}
-    for index, item in enumerate(raw["results"], 1):
-        if not isinstance(item, dict) or set(item) != required:
-            raise ValueError(f"results manifest entry {index} has invalid fields")
-        relative = item["path"]
-        digest = item["sha256"]
-        repository = item["source_repository"]
-        generated_at = item["generated_at"]
-        if (
-            not isinstance(relative, str)
-            or not relative
-            or Path(relative).name != relative
-            or relative in seen
-        ):
-            raise ValueError(f"results manifest entry {index} has an unsafe path")
-        if Path(relative).suffix.lower() not in _RESULT_EXTENSIONS:
-            raise ValueError(f"results manifest entry {index} has an unsupported format")
-        if not isinstance(digest, str) or not _SHA256_PATTERN.fullmatch(digest):
-            raise ValueError(f"results manifest entry {index} has an invalid sha256")
-        if not isinstance(repository, str) or not repository.strip():
-            raise ValueError(
-                f"results manifest entry {index} needs source_repository provenance"
-            )
-        if not isinstance(generated_at, str) or not generated_at.strip():
-            raise ValueError(f"results manifest entry {index} needs generated_at")
-        try:
-            datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise ValueError(
-                f"results manifest entry {index} has invalid generated_at"
-            ) from exc
-        path = artifacts / relative
-        identity_before = direct_file_identity(
-            path,
-            expected_parent=artifacts,
-            expected_parent_identity=artifacts_identity,
-        )
-        actual_text = read_stable_direct_text(
-            path,
-            expected_parent=artifacts,
-            expected_parent_identity=artifacts_identity,
-        )
-        identity_after = direct_file_identity(
-            path,
-            expected_parent=artifacts,
-            expected_parent_identity=artifacts_identity,
-        )
-        if identity_after != identity_before:
-            raise OSError(f"result artifact changed during validation: {relative}")
-        actual_digest = hashlib.sha256(actual_text.encode("utf-8")).hexdigest()
-        if actual_digest != digest:
-            raise ValueError(f"result artifact hash mismatch: {relative}")
-        seen.add(relative)
-        inputs.append(path)
-        input_identities.append(identity_after)
-    assert_directory_identity(artifacts, artifacts_identity, context="artifacts")
-    assert_directory_identity(
-        project_path,
-        expected_project_identity,
-        context="project",
-    )
-    identity_parts = [
-        str(artifacts_identity),
-        str(manifest_identity),
-    ]
-    for path, expected_identity in zip(inputs, input_identities, strict=True):
-        current_identity = direct_file_identity(
-            path,
-            expected_parent=artifacts,
-            expected_parent_identity=artifacts_identity,
-        )
-        if current_identity != expected_identity:
-            raise OSError(f"result artifact changed during validation: {path.name}")
-        identity_parts.append(str(current_identity))
-    if (
-        direct_file_identity(
-            manifest_path,
-            expected_parent=artifacts,
-            expected_parent_identity=artifacts_identity,
-        )
-        != manifest_identity
-    ):
-        raise OSError("results manifest changed during validation")
-    dependency_token = "\n".join(
-        (raw_text, *(str(path.name) for path in inputs), *identity_parts)
-    )
-    return tuple(inputs), hashlib.sha256(dependency_token.encode("utf-8")).hexdigest()
 
 
 def _markdown_outputs(folder: Path) -> tuple[Path, ...]:
@@ -483,10 +342,12 @@ def guide_project(
         project_identity,
     )
     result_ready = result_progress == "complete"
-    result_inputs, result_inputs_sha256 = _result_inputs(
+    result_input_snapshot = load_result_inputs(
         project_path,
         project_identity,
     )
+    result_inputs = result_input_snapshot.artifacts
+    result_inputs_sha256 = result_input_snapshot.token
     manuscripts = _markdown_outputs(project_path / "writing")
     reviews = _markdown_outputs(project_path / "reviews")
 
