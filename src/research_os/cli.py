@@ -875,12 +875,19 @@ def _run(args: argparse.Namespace) -> int:
                 raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
         else:
             as_of = date.today()
-        audit = build_manuscript_audit(
-            args.workspace,
-            args.project,
-            args.draft,
-            as_of=as_of,
-        )
+        try:
+            audit = build_manuscript_audit(
+                args.workspace,
+                args.project,
+                args.draft,
+                as_of=as_of,
+            )
+        except PermissionError:
+            raise PermissionError("PHI_SUSPECTED") from None
+        except (UnicodeError, ValueError, FileNotFoundError):
+            raise ValueError("MANUSCRIPT_AUDIT_INPUT_ERROR") from None
+        except OSError:
+            raise OSError("MANUSCRIPT_AUDIT_STATE_CHANGED") from None
         if args.format == "json":
             print(
                 json.dumps(

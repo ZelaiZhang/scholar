@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
+import hashlib
 import json
 from pathlib import Path
 import os
@@ -76,6 +77,22 @@ def _draft_project(tmp_path: Path, content: str = "## Abstract\nPublic text.\n")
     draft = project / "writing" / "draft.md"
     draft.write_text(content, encoding="utf-8")
     return project, draft
+
+
+def _write_result_input(project: Path, content: str = "metric,value\nscore,1\n") -> Path:
+    artifacts = project / "artifacts"
+    artifact = artifacts / "metrics.csv"
+    artifact.write_text(content, encoding="utf-8")
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    (artifacts / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: metrics.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    return artifact
 
 
 def test_builder_accepts_a_direct_utf8_markdown_file_without_writes(tmp_path: Path) -> None:
@@ -204,6 +221,16 @@ def test_builder_stops_for_each_phi_marker_without_echoing_it(tmp_path: Path, ma
 
     assert str(exc_info.value) == "PHI_SUSPECTED"
     assert marker not in str(exc_info.value)
+
+
+def test_builder_stops_for_phi_before_attempting_to_read_a_broken_ledger(tmp_path: Path) -> None:
+    project, draft = _draft_project(tmp_path, "## Abstract\npatient_id: secret\n")
+    (project / "02-evidence-ledger.yaml").write_text("schema_version: [broken", encoding="utf-8")
+
+    with pytest.raises(PermissionError) as exc_info:
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+    assert str(exc_info.value) == "PHI_SUSPECTED"
 
 
 def test_builder_detects_same_content_draft_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -342,6 +369,46 @@ def test_builder_detects_research_state_change_between_snapshots(
         build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
 
 
+@pytest.mark.parametrize("name", ("02-evidence-ledger.yaml", "00-research-brief.md"))
+def test_builder_detects_byte_identical_replacement_of_research_state_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    target = project / name
+    original_parse = audit_module.parse_manuscript
+
+    def replace_state_then_parse(content: str):
+        replacement = target.with_name(f"replacement-{name}")
+        replacement.write_bytes(target.read_bytes())
+        os.replace(replacement, target)
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", replace_state_then_parse)
+
+    with pytest.raises(OSError, match="research state"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_cycle_directory_identity_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, draft = _draft_project(tmp_path)
+    brief = audit_module.build_meeting_brief(tmp_path, project.name, as_of=date(2026, 8, 13))
+    cycles = project / "cycles"
+    cycles.mkdir()
+    original_parse = audit_module.parse_manuscript
+
+    def replace_cycles_then_parse(content: str):
+        moved = project / "moved-cycles"
+        cycles.rename(moved)
+        shutil.copytree(moved, cycles)
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", replace_cycles_then_parse)
+    monkeypatch.setattr(audit_module, "build_meeting_brief", lambda *_args, **_kwargs: brief)
+
+    with pytest.raises(OSError, match="research state"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
 def test_builder_detects_selected_idea_drift_when_plan_payload_is_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -371,6 +438,108 @@ def test_builder_detects_selected_idea_drift_when_plan_payload_is_unchanged(
     monkeypatch.setattr(audit_module, "manuscript_plan_from_brief", unchanged_plan)
 
     with pytest.raises(OSError, match="selected Idea IDs"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_coordinated_result_artifact_and_manifest_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    _write_result_input(project)
+    original_parse = audit_module.parse_manuscript
+
+    def mutate_results_then_parse(content: str):
+        _write_result_input(project, "metric,value\nscore,2\n")
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", mutate_results_then_parse)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_result_mutation_during_first_state_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    _write_result_input(project)
+    original_brief = audit_module.build_meeting_brief
+    calls = 0
+
+    def mutate_after_brief(*args: object, **kwargs: object):
+        nonlocal calls
+        calls += 1
+        brief = original_brief(*args, **kwargs)
+        if calls == 1:
+            _write_result_input(project, "metric,value\nscore,2\n")
+        return brief
+
+    monkeypatch.setattr(audit_module, "build_meeting_brief", mutate_after_brief)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_same_content_result_artifact_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    artifact = _write_result_input(project)
+    original_parse = audit_module.parse_manuscript
+
+    def replace_artifact_then_parse(content: str):
+        replacement = artifact.with_name("replacement.csv")
+        replacement.write_bytes(artifact.read_bytes())
+        os.replace(replacement, artifact)
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", replace_artifact_then_parse)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_same_content_result_manifest_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    _write_result_input(project)
+    manifest = project / "artifacts" / "results-manifest.yaml"
+    original_parse = audit_module.parse_manuscript
+
+    def replace_manifest_then_parse(content: str):
+        replacement = manifest.with_name("replacement-manifest.yaml")
+        replacement.write_bytes(manifest.read_bytes())
+        os.replace(replacement, manifest)
+        return original_parse(content)
+
+    monkeypatch.setattr(audit_module, "parse_manuscript", replace_manifest_then_parse)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
+
+
+def test_builder_detects_draft_replacement_after_pre_final_identity_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, draft = _draft_project(tmp_path)
+    original_identity = audit_module.direct_file_identity
+    calls = 0
+
+    def replace_after_pre_final_identity(path: Path, **kwargs: object):
+        nonlocal calls
+        identity = original_identity(path, **kwargs)
+        if path == draft:
+            calls += 1
+        if path == draft and calls == 3:
+            replacement = draft.with_name("replacement.md")
+            replacement.write_bytes(draft.read_bytes())
+            os.replace(replacement, draft)
+        return identity
+
+    monkeypatch.setattr(audit_module, "direct_file_identity", replace_after_pre_final_identity)
+
+    with pytest.raises(OSError):
         build_manuscript_audit(tmp_path, project.name, draft, as_of=date(2026, 8, 13))
 
 
@@ -422,6 +591,15 @@ def test_builder_boundaries_are_exact_and_markdown_is_deterministic(tmp_path: Pa
     assert render_manuscript_audit(first) == render_manuscript_audit(second)
 
 
+def test_renderer_uses_a_safe_code_span_for_backtick_draft_filename() -> None:
+    rendered = render_manuscript_audit(
+        replace(_audit(), draft_path="writing/` [active](https://example.test) `.md")
+    )
+
+    assert "- Draft: ``writing/` [active](https://example.test) `.md``" in rendered
+    assert "- Draft: `writing/` [active]" not in rendered
+
+
 def test_cli_emits_public_json_and_uses_issue_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -467,6 +645,25 @@ def test_cli_uses_markdown_and_issue_presence_not_status(
 def test_cli_rejects_invalid_as_of(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["manuscript-audit", "--project", "public-project", "--draft", "writing/draft.md", "--workspace", str(tmp_path), "--as-of", "not-a-date"]) == 2
     assert "--as-of" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("error", (ValueError("/poisoned/path artifact-secret"), OSError("/poisoned/path artifact-secret")))
+def test_cli_maps_non_phi_audit_errors_without_echoing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+) -> None:
+    def fail(*_args: object, **_kwargs: object):
+        raise error
+
+    monkeypatch.setattr(cli_module, "build_manuscript_audit", fail)
+
+    assert main(["manuscript-audit", "--project", "public-project", "--draft", "writing/draft.md", "--workspace", str(tmp_path)]) == 2
+    captured = capsys.readouterr().err
+    assert "artifact-secret" not in captured
+    assert "/poisoned/path" not in captured
+    assert "MANUSCRIPT_AUDIT_" in captured
 
 
 def test_cli_phi_error_is_exit_two_without_sensitive_echo(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

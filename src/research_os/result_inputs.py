@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from research_os.manuscript_markup import SAFE_VALUE
 from research_os.io import (
     assert_directory_identity,
     direct_file_identity,
@@ -98,6 +99,7 @@ def load_result_inputs(
             not isinstance(relative, str)
             or not relative.strip()
             or Path(relative).name != relative
+            or SAFE_VALUE.fullmatch(relative) is None
             or relative in seen
         ):
             raise ValueError(f"results manifest entry {index} has an unsafe path")

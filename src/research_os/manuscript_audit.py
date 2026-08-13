@@ -7,7 +7,9 @@ from datetime import date
 import hashlib
 import json
 from pathlib import Path
+import re
 
+from research_os.cycle import load_active_cycle_snapshot
 from research_os.dashboard import ProjectStatus
 from research_os.cycle_context import IDENTIFIABLE_MEDICAL_MARKERS
 from research_os.io import (
@@ -28,7 +30,13 @@ from research_os.manuscript_plan import (
     manuscript_plan_from_brief,
     manuscript_plan_payload,
 )
-from research_os.meeting_brief import BriefClaim, ExcludedClaim, build_meeting_brief
+from research_os.meeting_brief import (
+    BriefClaim,
+    ExcludedClaim,
+    MeetingBrief,
+    build_meeting_brief,
+    meeting_brief_payload,
+)
 from research_os.project import resolve_project_path
 from research_os.result_inputs import ResultInputSnapshot, load_result_inputs
 
@@ -61,6 +69,17 @@ _AUDIT_BOUNDARIES = (
     "Research OS did not rewrite the manuscript or execute experiments.",
     "The researcher must verify semantic entailment and approve every statement.",
 )
+_STATE_FILES = (
+    "project.yaml",
+    "00-research-brief.md",
+    "02-evidence-ledger.yaml",
+    "03-literature-review.md",
+    "04-idea-candidates.md",
+    "05-experiment-design.md",
+    "06-result-analysis.md",
+    "knowledge-profile.yaml",
+)
+_STATE_DIRECTORIES = ("ideas", "cycles")
 
 
 @dataclass(frozen=True)
@@ -106,6 +125,14 @@ class AuditContext:
     plan: ManuscriptPlan
     selected_idea_ids: tuple[str, ...]
     result_inputs: ResultInputSnapshot
+
+
+@dataclass(frozen=True)
+class _ResearchStateSnapshot:
+    brief: MeetingBrief
+    plan: ManuscriptPlan
+    result_inputs: ResultInputSnapshot
+    fingerprint: bytes
 
 
 @dataclass(frozen=True)
@@ -279,11 +306,6 @@ def build_manuscript_audit(
         expected_parent=writing,
         expected_parent_identity=writing_identity,
     )
-
-    first_brief = build_meeting_brief(workspace, slug, as_of=as_of)
-    first_plan = manuscript_plan_from_brief(first_brief)
-    _assert_audit_directories(project, project_identity, writing, writing_identity)
-
     draft_text = read_stable_direct_text(
         draft_path,
         expected_parent=writing,
@@ -300,21 +322,33 @@ def build_manuscript_audit(
     ):
         raise OSError("draft changed during stable read")
     _assert_no_phi(draft_text)
+
+    first_state = _research_state_snapshot(
+        workspace, slug, project, project_identity, as_of
+    )
     parsed = parse_manuscript(draft_text)
     draft_sha256 = hashlib.sha256(draft_text.encode("utf-8")).hexdigest()
 
-    second_brief = build_meeting_brief(workspace, slug, as_of=as_of)
-    second_plan = manuscript_plan_from_brief(second_brief)
-    if _canonical_plan(first_plan) != _canonical_plan(second_plan):
-        raise OSError("research state changed during manuscript audit")
-    if _selected_ids(first_brief) != _selected_ids(second_brief):
+    second_state = _research_state_snapshot(
+        workspace, slug, project, project_identity, as_of
+    )
+    if _selected_ids(first_state.brief) != _selected_ids(second_state.brief):
         raise OSError("selected Idea IDs changed during manuscript audit")
-    result_inputs = load_result_inputs(project, project_identity)
+    if first_state.fingerprint != second_state.fingerprint:
+        raise OSError("research state changed during manuscript audit")
+    if _result_fingerprint(first_state.result_inputs) != _result_fingerprint(
+        second_state.result_inputs
+    ):
+        raise OSError("result inputs changed during manuscript audit")
     audit = audit_parsed_manuscript(
         parsed,
-        AuditContext(second_plan, _selected_ids(second_brief), result_inputs),
+        AuditContext(
+            second_state.plan,
+            _selected_ids(second_state.brief),
+            second_state.result_inputs,
+        ),
         as_of=as_of.isoformat(),
-        project=second_plan.project,
+        project=second_state.plan.project,
         draft_path=draft_path.relative_to(project).as_posix(),
         draft_sha256=draft_sha256,
     )
@@ -337,6 +371,25 @@ def build_manuscript_audit(
     )
     if hashlib.sha256(final_text.encode("utf-8")).hexdigest() != draft_sha256:
         raise OSError("draft content changed during manuscript audit")
+    if (
+        direct_file_identity(
+            draft_path,
+            expected_parent=writing,
+            expected_parent_identity=writing_identity,
+        )
+        != draft_identity
+    ):
+        raise OSError("draft changed during final read")
+    _assert_audit_directories(project, project_identity, writing, writing_identity)
+    final_state = _research_state_snapshot(
+        workspace, slug, project, project_identity, as_of
+    )
+    if second_state.fingerprint != final_state.fingerprint:
+        raise OSError("research state changed during manuscript audit")
+    if _result_fingerprint(second_state.result_inputs) != _result_fingerprint(
+        final_state.result_inputs
+    ):
+        raise OSError("result inputs changed during manuscript audit")
     return audit
 
 
@@ -368,13 +421,137 @@ def _assert_no_phi(draft_text: str) -> None:
         raise PermissionError("PHI_SUSPECTED")
 
 
-def _canonical_plan(plan: ManuscriptPlan) -> bytes:
+def _research_state_snapshot(
+    workspace: Path,
+    slug: str,
+    project: Path,
+    project_identity: tuple[int, int],
+    as_of: date,
+) -> _ResearchStateSnapshot:
+    """Bind a brief/plan to stable identities of its known project inputs."""
+    before = _research_input_fingerprint(workspace, slug, project, project_identity)
+    before_results = load_result_inputs(project, project_identity)
+    brief = build_meeting_brief(workspace, slug, as_of=as_of)
+    plan = manuscript_plan_from_brief(brief)
+    after = _research_input_fingerprint(workspace, slug, project, project_identity)
+    after_results = load_result_inputs(project, project_identity)
+    if before != after:
+        raise OSError("research state changed while capturing manuscript audit snapshot")
+    if _result_fingerprint(before_results) != _result_fingerprint(after_results):
+        raise OSError("result inputs changed while capturing manuscript audit snapshot")
+    return _ResearchStateSnapshot(
+        brief,
+        plan,
+        after_results,
+        _canonical_json_bytes(
+            {
+                "brief": meeting_brief_payload(brief),
+                "plan": manuscript_plan_payload(plan),
+                "inputs": after.hex(),
+            }
+        ),
+    )
+
+
+def _research_input_fingerprint(
+    workspace: Path,
+    slug: str,
+    project: Path,
+    project_identity: tuple[int, int],
+) -> bytes:
+    """Fingerprint only explicit, direct dependencies—never walk project trees."""
+    assert_directory_identity(project, project_identity, context="project")
+    files: list[tuple[str, tuple[int, int], str]] = []
+    for name in _STATE_FILES:
+        path = project / name
+        if path.exists():
+            identity = direct_file_identity(
+                path,
+                expected_parent=project,
+                expected_parent_identity=project_identity,
+            )
+            content = read_stable_direct_text(
+                path,
+                expected_parent=project,
+                expected_parent_identity=project_identity,
+            )
+            if (
+                direct_file_identity(
+                    path,
+                    expected_parent=project,
+                    expected_parent_identity=project_identity,
+                )
+                != identity
+            ):
+                raise OSError("research state changed while fingerprinting")
+            files.append(
+                (name, identity, hashlib.sha256(content.encode("utf-8")).hexdigest())
+            )
+    directories: list[tuple[str, tuple[int, int] | None]] = []
+    for name in _STATE_DIRECTORIES:
+        path = project / name
+        directories.append((name, directory_identity(path) if path.exists() else None))
+
+    cycle: object = None
+    if (project / "cycles").exists():
+        try:
+            run_dir, manifest, artifact_identity = load_active_cycle_snapshot(
+                workspace,
+                slug,
+                expected_project_identity=project_identity,
+            )
+        except (OSError, UnicodeError, ValueError):
+            cycle = "unavailable"
+        else:
+            cycle = {
+                "run": run_dir.name,
+                "manifest": {
+                    "run_id": manifest.run_id,
+                    "state": manifest.state,
+                    "candidate_sha256": manifest.candidate_sha256,
+                    "reviews_sha256": manifest.reviews_sha256,
+                    "meta_review_sha256": manifest.meta_review_sha256,
+                    "updated_at": manifest.updated_at,
+                },
+                "artifact_identity": repr(artifact_identity),
+            }
+    assert_directory_identity(project, project_identity, context="project")
+    return _canonical_json_bytes(
+        {"files": files, "directories": directories, "cycle": cycle}
+    )
+
+
+def _result_fingerprint(snapshot: ResultInputSnapshot) -> bytes:
+    return _canonical_json_bytes(
+        {
+            "token": snapshot.token,
+            "directory_identity": snapshot.directory_identity,
+            "manifest_identity": snapshot.manifest_identity,
+            "artifacts": [
+                {
+                    "name": artifact.name,
+                    "sha256": artifact.sha256,
+                    "source_repository": artifact.source_repository,
+                    "generated_at": artifact.generated_at,
+                    "identity": artifact.identity,
+                }
+                for artifact in snapshot.artifacts
+            ],
+        }
+    )
+
+
+def _canonical_json_bytes(value: object) -> bytes:
     return json.dumps(
-        manuscript_plan_payload(plan),
+        value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def _canonical_plan(plan: ManuscriptPlan) -> bytes:
+    return _canonical_json_bytes(manuscript_plan_payload(plan))
 
 
 def _selected_ids(brief: object) -> tuple[str, ...]:
@@ -434,8 +611,8 @@ def render_manuscript_audit(audit: ManuscriptAudit) -> str:
     lines = [
         "# Manuscript audit",
         "",
-        f"- Project: `{audit.project.slug}`",
-        f"- Draft: `{audit.draft_path}`",
+        f"- Project: {_markdown_code_span(audit.project.slug)}",
+        f"- Draft: {_markdown_code_span(audit.draft_path)}",
         f"- As of: {audit.as_of}",
         f"- Status: `{audit.status}`",
         "",
@@ -482,6 +659,13 @@ def render_manuscript_audit(audit: ManuscriptAudit) -> str:
 
 def _markdown_cell(value: str) -> str:
     return " ".join(value.splitlines()).replace("|", "\\|").strip()
+
+
+def _markdown_code_span(value: str) -> str:
+    longest = max((len(match.group()) for match in re.finditer(r"`+", value)), default=0)
+    delimiter = "`" * (longest + 1)
+    padding = " " if value.startswith(("`", " ")) or value.endswith(("`", " ")) else ""
+    return f"{delimiter}{padding}{value}{padding}{delimiter}"
 
 
 def _claim_index(plan: ManuscriptPlan) -> _ClaimIndex:

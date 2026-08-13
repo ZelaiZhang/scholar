@@ -105,6 +105,23 @@ def test_load_result_inputs_rejects_blank_artifact_name(tmp_path: Path) -> None:
         )
 
 
+def test_load_result_inputs_rejects_unicode_artifact_name(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "artifacts"
+    artifacts.mkdir(parents=True)
+    content = "metric,value\naccuracy,0.8\n"
+    name = "结果.csv"
+    artifact = artifacts / name
+    artifact.write_text(content, encoding="utf-8")
+    _write_manifest(
+        artifacts,
+        _result_entry(name, hashlib.sha256(artifact.read_bytes()).hexdigest()),
+    )
+
+    with pytest.raises(ValueError, match="unsafe path"):
+        result_inputs.load_result_inputs(project, directory_identity(project))
+
+
 def test_load_result_inputs_rejects_artifact_changed_after_snapshot(
     tmp_path: Path,
 ) -> None:
