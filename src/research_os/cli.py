@@ -30,6 +30,11 @@ from research_os.meeting_brief import (
     meeting_brief_payload,
     render_meeting_brief,
 )
+from research_os.manuscript_plan import (
+    build_manuscript_plan,
+    manuscript_plan_payload,
+    render_manuscript_plan,
+)
 from research_os.pdf import extract_pdf
 from research_os.project import (
     create_project,
@@ -89,6 +94,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--format", choices=("markdown", "json"), default="markdown"
     )
     meeting_parser.add_argument("--workspace", type=Path, default=Path.cwd())
+
+    manuscript_parser = subparsers.add_parser(
+        "manuscript-plan",
+        help="生成证据绑定的论文写作就绪计划",
+    )
+    manuscript_parser.add_argument("--project", required=True, help="课题 slug")
+    manuscript_parser.add_argument(
+        "--as-of", default="", help="计划截止日期 YYYY-MM-DD"
+    )
+    manuscript_parser.add_argument(
+        "--format", choices=("markdown", "json"), default="markdown"
+    )
+    manuscript_parser.add_argument("--workspace", type=Path, default=Path.cwd())
 
     cycle_parser = subparsers.add_parser(
         "cycle", help="创建或恢复有界、可审计的科研循环"
@@ -805,6 +823,30 @@ def _run(args: argparse.Namespace) -> int:
             )
         else:
             print(render_meeting_brief(brief), end="")
+        return 0
+    if args.command == "manuscript-plan":
+        if args.as_of:
+            try:
+                as_of = date.fromisoformat(args.as_of)
+            except ValueError as exc:
+                raise ValueError("--as-of 必须是 YYYY-MM-DD 日期") from exc
+        else:
+            as_of = date.today()
+        plan = build_manuscript_plan(
+            args.workspace,
+            args.project,
+            as_of=as_of,
+        )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    manuscript_plan_payload(plan),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(render_manuscript_plan(plan), end="")
         return 0
     if args.command == "kb":
         if args.kb_command == "doctor":

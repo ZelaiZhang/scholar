@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 
 from research_os.dashboard import ProjectStatus
-from research_os.meeting_brief import BriefClaim, ExcludedClaim, MeetingBrief
+from research_os.meeting_brief import (
+    BriefClaim,
+    EvidenceReference,
+    ExcludedClaim,
+    MeetingBrief,
+    build_meeting_brief,
+)
 
 
 _SECTION_TITLES = {
@@ -53,6 +61,184 @@ class ManuscriptPlan:
     excluded_claims: tuple[ExcludedClaim, ...]
     next_action: ManuscriptAction
     boundaries: tuple[str, ...]
+
+
+def _reference_payload(reference: EvidenceReference) -> dict[str, str]:
+    return {"source_id": reference.source_id, "locator": reference.locator}
+
+
+def _claim_payload(claim: BriefClaim) -> dict[str, object]:
+    return {
+        "claim_id": claim.claim_id,
+        "statement": claim.statement,
+        "type": claim.claim_type,
+        "status": claim.status,
+        "confidence": claim.confidence,
+        "support": [_reference_payload(item) for item in claim.support],
+        "opposition": [_reference_payload(item) for item in claim.opposition],
+        "limitations": claim.limitations,
+    }
+
+
+def _excluded_payload(claim: ExcludedClaim) -> dict[str, object]:
+    return {
+        "claim_id": claim.claim_id,
+        "statement": claim.statement,
+        "issues": [
+            {
+                "code": issue.code,
+                "claim_id": issue.claim_id,
+                "message": issue.message,
+            }
+            for issue in claim.issues
+        ],
+    }
+
+
+def _section_payload(section: SectionReadiness) -> dict[str, object]:
+    return {
+        "code": section.code,
+        "title": section.title,
+        "status": section.status,
+        "reason_codes": list(section.reason_codes),
+        "reasons": list(section.reasons),
+        "claim_ids": list(section.claim_ids),
+        "artifact_paths": list(section.artifact_paths),
+    }
+
+
+def manuscript_plan_payload(plan: ManuscriptPlan) -> dict[str, object]:
+    return {
+        "schema_version": plan.schema_version,
+        "as_of": plan.as_of,
+        "project": {
+            "title": plan.project.title,
+            "slug": plan.project.slug,
+            "stage": plan.project.stage,
+            "state": plan.project.state,
+            "blockers": list(plan.project.blockers),
+        },
+        "overall_status": plan.overall_status,
+        "sections": [_section_payload(item) for item in plan.sections],
+        "citation_candidates": [
+            _claim_payload(item) for item in plan.citation_candidates
+        ],
+        "open_facts": [_claim_payload(item) for item in plan.open_facts],
+        "research_statements": [
+            _claim_payload(item) for item in plan.research_statements
+        ],
+        "conflicts": [_claim_payload(item) for item in plan.conflicts],
+        "excluded_claims": [
+            _excluded_payload(item) for item in plan.excluded_claims
+        ],
+        "next_actions": [
+            {
+                "code": plan.next_action.code,
+                "reason": plan.next_action.reason,
+                "target": plan.next_action.target,
+                "command": plan.next_action.command,
+            }
+        ],
+        "boundaries": list(plan.boundaries),
+    }
+
+
+def _markdown_text(value: str) -> str:
+    return " ".join(value.splitlines()).replace("|", "\\|").strip()
+
+
+def _render_claim_group(title: str, claims: tuple[BriefClaim, ...]) -> list[str]:
+    lines = [f"## {title}", ""]
+    if not claims:
+        return [*lines, "- 无。", ""]
+    for claim in claims:
+        lines.append(
+            f"- **{claim.claim_id}** `[{claim.claim_type}]` "
+            f"`[{claim.status}]`：{_markdown_text(claim.statement)}"
+        )
+        for label, references in (
+            ("支持", claim.support),
+            ("反对", claim.opposition),
+        ):
+            for reference in references:
+                lines.append(
+                    f"  - {label}: `{reference.source_id}` @ "
+                    f"{_markdown_text(reference.locator)}"
+                )
+        lines.append(f"  - 局限: {_markdown_text(claim.limitations) or '-'}")
+    lines.append("")
+    return lines
+
+
+def render_manuscript_plan(plan: ManuscriptPlan) -> str:
+    lines = [
+        f"# 论文就绪计划：{_markdown_text(plan.project.title)}",
+        "",
+        f"- 课题: `{plan.project.slug}`",
+        f"- 截止日期: {plan.as_of}",
+        f"- 总体状态: `{plan.overall_status}`",
+        "",
+        "## 章节就绪度",
+        "",
+        "| Section | Status | Missing gates | Evidence | Artifacts |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for section in plan.sections:
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _markdown_text(section.title),
+                    f"`{section.status}`",
+                    _markdown_text("; ".join(section.reasons) or "-"),
+                    _markdown_text(", ".join(section.claim_ids) or "-"),
+                    _markdown_text(", ".join(section.artifact_paths) or "-"),
+                )
+            )
+            + " |"
+        )
+    lines.append("")
+    lines.extend(_render_claim_group("可引用事实候选", plan.citation_candidates))
+    lines.extend(_render_claim_group("待核验事实", plan.open_facts))
+    lines.extend(_render_claim_group("推断与假设", plan.research_statements))
+    lines.extend(_render_claim_group("冲突证据", plan.conflicts))
+    lines.extend(["## 已排除陈述", ""])
+    if plan.excluded_claims:
+        for claim in plan.excluded_claims:
+            lines.append(f"- **{claim.claim_id}**：{_markdown_text(claim.statement)}")
+            for issue in claim.issues:
+                lines.append(
+                    f"  - `{issue.code}`: {_markdown_text(issue.message)}"
+                )
+    else:
+        lines.append("- 无。")
+    lines.extend(
+        [
+            "",
+            "## 唯一下一步",
+            "",
+            f"- 动作: `{plan.next_action.code}`",
+            f"- 原因: {_markdown_text(plan.next_action.reason)}",
+            f"- 目标: `{_markdown_text(plan.next_action.target)}`",
+            f"- 命令: `{_markdown_text(plan.next_action.command)}`",
+            "",
+            "## 安全边界",
+            "",
+        ]
+    )
+    lines.extend(f"- {_markdown_text(boundary)}" for boundary in plan.boundaries)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_manuscript_plan(
+    workspace: Path,
+    slug: str,
+    *,
+    as_of: date,
+) -> ManuscriptPlan:
+    return manuscript_plan_from_brief(
+        build_meeting_brief(workspace, slug, as_of=as_of)
+    )
 
 
 def _readiness(

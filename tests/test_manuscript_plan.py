@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 
 import pytest
 
@@ -13,7 +14,11 @@ from research_os.meeting_brief import (
     ExcludedClaim,
     MeetingBrief,
 )
-from research_os.manuscript_plan import manuscript_plan_from_brief
+from research_os.manuscript_plan import (
+    manuscript_plan_from_brief,
+    manuscript_plan_payload,
+    render_manuscript_plan,
+)
 
 
 def _claim(
@@ -327,3 +332,43 @@ def test_ready_outline_has_one_fixed_evidence_bound_writing_action() -> None:
         "$manuscript-assistant 基于 topic-a 的 manuscript-plan 和核验证据账本创建论文大纲，"
         "不补写缺失引用或结果"
     )
+
+
+def test_public_payload_is_explicit_and_does_not_leak_snapshot_internals() -> None:
+    payload = manuscript_plan_payload(manuscript_plan_from_brief(_brief()))
+    encoded = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["schema_version"] == 1
+    assert [item["code"] for item in payload["sections"]] == [
+        "abstract",
+        "introduction",
+        "related_work",
+        "methods",
+        "experiments",
+        "results",
+        "limitations_ethics",
+        "conclusion",
+    ]
+    assert len(payload["next_actions"]) == 1
+    assert "artifact_identity" not in encoded
+    assert "snapshot_token" not in encoded
+    assert payload["citation_candidates"][0]["support"] == [
+        {"source_id": "src-public", "locator": "p. 7, Results"}
+    ]
+
+
+def test_markdown_renders_evidence_groups_action_and_boundaries() -> None:
+    rendered = render_manuscript_plan(manuscript_plan_from_brief(_brief()))
+
+    assert "# 论文就绪计划：Public diagnostic reasoning" in rendered
+    assert "| Abstract |" in rendered
+    assert "| Limitations and Ethics |" in rendered
+    assert "## 可引用事实候选" in rendered
+    assert "p. 7, Results" in rendered
+    assert "Single public benchmark." in rendered
+    assert "## 待核验事实" in rendered
+    assert "## 推断与假设" in rendered
+    assert "## 冲突证据" in rendered
+    assert "## 已排除陈述" in rendered
+    assert "## 唯一下一步" in rendered
+    assert "## 安全边界" in rendered
