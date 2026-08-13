@@ -101,6 +101,9 @@ def test_manuscript_assistant_requires_hidden_provenance_and_final_audit() -> No
     assert "不得运行训练" in manuscript
     assert "不得运行实验" in manuscript
     assert "不提供个人诊疗建议" in manuscript
+    assert "active cycle" in manuscript and "completed" in manuscript
+    assert "name+sha256" in manuscript
+    assert "Windows ADS" in manuscript
 
 
 def test_stage_skills_write_completion_markers_only_after_quality_gates() -> None:
@@ -118,6 +121,25 @@ def test_stage_skills_write_completion_markers_only_after_quality_gates() -> Non
 
         assert f"research-os:stage={marker}" in text
         assert "质量门禁" in text
+
+
+def test_result_interpreter_binds_completion_to_every_validated_manifest_digest() -> None:
+    text = (
+        ROOT / ".agents/skills/result-interpreter/SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "artifacts/results-manifest.yaml" in text
+    assert "research-os guide --project <slug> --workspace ." in text
+    assert (
+        "<!-- research-os:result-input name=<清单中的直接文件名>; "
+        "sha256=<清单中的 64 位小写哈希> -->"
+    ) in text
+    assert "每个当前" in text
+    assert "移除" in text and "过期" in text
+    assert "不得编造" in text and "sha256" in text
+    assert text.index("research-os:result-input") < text.index(
+        "research-os:stage=result-complete"
+    )
 
 
 def test_research_cycle_skill_enforces_controller_and_human_boundaries() -> None:

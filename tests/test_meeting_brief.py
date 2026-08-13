@@ -14,6 +14,8 @@ from research_os.ideas import (
     IdeaRecord,
     IdeaScores,
     NoveltyEvidence,
+    approve_idea,
+    load_idea_archive,
     save_idea_archive,
 )
 from research_os.meeting_brief import build_meeting_brief
@@ -175,7 +177,7 @@ def _write_meta_review(project: Path, run_id: str) -> None:
     )
 
 
-def _advance_and_approve_one_idea(
+def _advance_to_human_decision(
     workspace: Path, project: Path, source_id: str
 ) -> str:
     created = advance_cycle(workspace, project.name)
@@ -187,13 +189,41 @@ def _advance_and_approve_one_idea(
     advance_cycle(workspace, project.name)
     _write_meta_review(project, created.run_id)
     assert advance_cycle(workspace, project.name).state == "awaiting_human_decision"
+    return created.run_id
+
+
+def _advance_and_approve_one_idea(
+    workspace: Path, project: Path, source_id: str
+) -> str:
+    run_id = _advance_to_human_decision(workspace, project, source_id)
     approve_active_cycle_idea(
         workspace,
         project.name,
         "idea-0001",
         reason="Evidence and cost are acceptable.",
     )
-    return created.run_id
+    return run_id
+
+
+def test_meeting_brief_fails_closed_for_selected_archive_before_cycle_completion(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+    _advance_to_human_decision(tmp_path, project, source_id)
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(archive_path, allowed_source_ids={source_id})
+    save_idea_archive(
+        archive_path,
+        approve_idea(archive, "idea-0001", reason="Interrupted approval"),
+    )
+
+    with pytest.raises(ValueError, match="selected.*completed"):
+        build_meeting_brief(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
 
 
 def test_meeting_brief_routes_claims_without_promoting_invalid_evidence(

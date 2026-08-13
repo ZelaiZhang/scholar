@@ -10,13 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from research_os.manuscript_markup import SAFE_VALUE
 from research_os.io import (
     assert_directory_identity,
     direct_file_identity,
     directory_identity,
     read_stable_direct_text,
 )
+from research_os.portable_filename import is_portable_direct_filename
 
 
 _RESULT_EXTENSIONS = {".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml"}
@@ -86,7 +86,8 @@ def load_result_inputs(
         raise ValueError("results manifest schema_version must be 1 and results a list")
 
     artifacts: list[ResultArtifact] = []
-    seen: set[str] = set()
+    seen_names: set[str] = set()
+    seen_identities: set[tuple[int, int]] = set()
     required = {"path", "sha256", "source_repository", "generated_at"}
     for index, item in enumerate(raw["results"], 1):
         if not isinstance(item, dict) or set(item) != required:
@@ -97,12 +98,15 @@ def load_result_inputs(
         generated_at = item["generated_at"]
         if (
             not isinstance(relative, str)
-            or not relative.strip()
+            or not is_portable_direct_filename(relative)
             or Path(relative).name != relative
-            or SAFE_VALUE.fullmatch(relative) is None
-            or relative in seen
         ):
             raise ValueError(f"results manifest entry {index} has an unsafe path")
+        normalized_name = relative.casefold()
+        if normalized_name in seen_names:
+            raise ValueError(
+                f"results manifest entry {index} has a duplicate portable path"
+            )
         if Path(relative).suffix.lower() not in _RESULT_EXTENSIONS:
             raise ValueError(f"results manifest entry {index} has an unsupported format")
         if not isinstance(digest, str) or not _SHA256_PATTERN.fullmatch(digest):
@@ -137,12 +141,17 @@ def load_result_inputs(
         )
         if identity_after != identity_before:
             raise OSError(f"result artifact changed during validation: {relative}")
+        if identity_after in seen_identities:
+            raise ValueError(
+                f"results manifest entry {index} refers to the same file identity"
+            )
         if not actual_text.strip():
             raise ValueError(f"result artifact is blank: {relative}")
         actual_digest = hashlib.sha256(actual_text.encode("utf-8")).hexdigest()
         if actual_digest != digest:
             raise ValueError(f"result artifact hash mismatch: {relative}")
-        seen.add(relative)
+        seen_names.add(normalized_name)
+        seen_identities.add(identity_after)
         artifacts.append(
             ResultArtifact(
                 relative,

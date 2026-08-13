@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from research_os.portable_filename import is_portable_direct_filename
+
 
 SAFE_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 ANNOTATION_ENVELOPE = re.compile(r"\A<!-- research-os:(?P<body>[^\r\n]+) -->\Z")
@@ -35,6 +37,16 @@ HORIZONTAL_RULE = re.compile(
 )
 HTML_COMMENT_START = re.compile(r"^[ \t]*<!--")
 MARKDOWN_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def _skip_horizontal_space(line: str, cursor: int) -> int:
+    while cursor < len(line) and line[cursor] in " \t":
+        cursor += 1
+    return cursor
+
+
+def _remaining_is_blank(line: str, cursor: int) -> bool:
+    return all(character.isspace() for character in line[cursor:])
 
 
 @dataclass(frozen=True)
@@ -101,7 +113,7 @@ def parse_annotation(comment: str, *, line: int) -> ManuscriptAnnotation | None:
             return None
         return ManuscriptAnnotation(kind, (), idea_id, (), line)
 
-    artifact_names = _parse_values(values["artifacts"])
+    artifact_names = _parse_filename_values(values["artifacts"])
     if artifact_names is None:
         return None
     return ManuscriptAnnotation(kind, (), "", artifact_names, line)
@@ -112,6 +124,16 @@ def _parse_values(value: str) -> tuple[str, ...] | None:
     if not values or len(values) != len(set(values)):
         return None
     if any(SAFE_VALUE.fullmatch(item) is None for item in values):
+        return None
+    return values
+
+
+def _parse_filename_values(value: str) -> tuple[str, ...] | None:
+    values = tuple(value.split(","))
+    normalized = {item.casefold() for item in values}
+    if not values or len(values) != len(normalized):
+        return None
+    if any(not is_portable_direct_filename(item) for item in values):
         return None
     return values
 
@@ -155,21 +177,23 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
     for line_number, raw_line in enumerate(
         MARKDOWN_LINE_BREAK.split(markdown), start=1
     ):
+        cursor = 0
         ordinary_comment_prefix_stripped = False
         if in_html_comment:
-            comment_end = raw_line.find("-->")
+            comment_end = raw_line.find("-->", cursor)
             if comment_end == -1:
                 continue
             in_html_comment = False
             ordinary_comment_prefix_stripped = True
-            raw_line = raw_line[comment_end + 3 :]
-            if not raw_line.strip():
+            cursor = comment_end + 3
+            if _remaining_is_blank(raw_line, cursor):
                 continue
 
-        fence_match = FENCE.match(raw_line)
+        structural_line = raw_line if cursor == 0 else raw_line[cursor:]
+        fence_match = FENCE.match(structural_line)
         if fence_marker is None and fence_match is not None:
             marker = fence_match.group("marker")
-            if marker[0] == "`" and "`" in raw_line[fence_match.end() :]:
+            if marker[0] == "`" and "`" in structural_line[fence_match.end() :]:
                 fence_match = None
         if fence_marker is not None:
             if fence_match is not None:
@@ -177,7 +201,7 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                 if (
                     marker[0] == fence_marker[0]
                     and len(marker) >= fence_marker[1]
-                    and raw_line[fence_match.end() :].strip() == ""
+                    and structural_line[fence_match.end() :].strip() == ""
                 ):
                     fence_marker = None
             continue
@@ -187,7 +211,7 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             fence_marker = (marker[0], len(marker))
             continue
 
-        heading_match = HEADING.fullmatch(raw_line)
+        heading_match = HEADING.fullmatch(structural_line)
         if heading_match is not None:
             close_block()
             orphan_pending()
@@ -200,30 +224,37 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                 section = None
             continue
 
-        if not raw_line.strip() or HORIZONTAL_RULE.fullmatch(raw_line) is not None:
+        if (
+            not structural_line.strip()
+            or HORIZONTAL_RULE.fullmatch(structural_line) is not None
+        ):
             close_block()
             continue
 
         preceded_by_ordinary_comment = ordinary_comment_prefix_stripped
-        while HTML_COMMENT_START.match(raw_line) is not None:
-            is_research_annotation = raw_line.lstrip(" \t").startswith(
-                "<!-- research-os:"
+        while True:
+            comment_start = _skip_horizontal_space(raw_line, cursor)
+            if not raw_line.startswith("<!--", comment_start):
+                break
+            is_research_annotation = raw_line.startswith(
+                "<!-- research-os:", comment_start
             )
             if is_research_annotation and not preceded_by_ordinary_comment:
                 break
-            comment_end = raw_line.find("-->")
+            comment_end = raw_line.find("-->", comment_start + 4)
             if comment_end == -1:
                 in_html_comment = True
-                raw_line = ""
+                cursor = len(raw_line)
                 break
             preceded_by_ordinary_comment = True
-            raw_line = raw_line[comment_end + 3 :]
+            cursor = comment_end + 3
 
-        if not raw_line.strip():
+        if _remaining_is_blank(raw_line, cursor):
             continue
 
-        if raw_line.lstrip(" \t").startswith("<!-- research-os:"):
-            is_multiline_comment = "-->" not in raw_line
+        annotation_start = _skip_horizontal_space(raw_line, cursor)
+        if raw_line.startswith("<!-- research-os:", annotation_start):
+            is_multiline_comment = raw_line.find("-->", annotation_start) == -1
             if section is None:
                 if is_multiline_comment:
                     in_html_comment = True
@@ -240,7 +271,8 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                 if is_multiline_comment:
                     in_html_comment = True
                 continue
-            annotation = parse_annotation(raw_line, line=line_number)
+            annotation_line = raw_line if cursor == 0 else raw_line[cursor:]
+            annotation = parse_annotation(annotation_line, line=line_number)
             if annotation is None or pending is not None:
                 issues.append(
                     MarkupIssue(

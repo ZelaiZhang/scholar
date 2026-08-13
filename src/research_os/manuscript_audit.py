@@ -38,6 +38,7 @@ from research_os.meeting_brief import (
     meeting_brief_payload,
 )
 from research_os.project import resolve_project_path
+from research_os.portable_filename import validate_portable_direct_filename
 from research_os.result_inputs import ResultInputSnapshot, load_result_inputs
 
 
@@ -126,6 +127,7 @@ class AuditContext:
     plan: ManuscriptPlan
     selected_idea_ids: tuple[str, ...]
     result_inputs: ResultInputSnapshot
+    cycle_state: str = "completed"
 
 
 @dataclass(frozen=True)
@@ -165,7 +167,8 @@ def audit_parsed_manuscript(
     used_artifacts: set[str] = set()
     valid_limitation = False
 
-    if plan.overall_status == "blocked":
+    cycle_incomplete = context.cycle_state not in {"", "not_started", "completed"}
+    if plan.overall_status == "blocked" or cycle_incomplete:
         issues.append(_issue("PLAN_BLOCKED", "", 0, 0))
 
     occurrence_counts: dict[str, int] = {}
@@ -223,7 +226,10 @@ def audit_parsed_manuscript(
             valid_ids = _validate_research_claims(block, claim_index, issues)
             used_claim_ids.update(valid_ids)
         elif annotation.kind == "method":
-            if annotation.idea_id not in context.selected_idea_ids:
+            if (
+                context.cycle_state != "completed"
+                or annotation.idea_id not in context.selected_idea_ids
+            ):
                 issues.append(
                     _issue("IDEA_NOT_SELECTED", block.section, block.block_index, block.line)
                 )
@@ -301,7 +307,7 @@ def build_manuscript_audit(
     project_identity = directory_identity(project)
     writing = project / "writing"
     writing_identity = directory_identity(writing)
-    draft_path = _safe_draft_path(project, writing, draft)
+    draft_path = _safe_draft_path(workspace, project, writing, draft)
     draft_identity = direct_file_identity(
         draft_path,
         expected_parent=writing,
@@ -347,6 +353,7 @@ def build_manuscript_audit(
             second_state.plan,
             _selected_ids(second_state.brief),
             second_state.result_inputs,
+            second_state.brief.idea_state.cycle_state,
         ),
         as_of=as_of.isoformat(),
         project=second_state.plan.project,
@@ -393,16 +400,32 @@ def build_manuscript_audit(
     return audit
 
 
-def _safe_draft_path(project: Path, writing: Path, draft: Path) -> Path:
+def _safe_draft_path(
+    workspace: Path,
+    project: Path,
+    writing: Path,
+    draft: Path,
+) -> Path:
     supplied = Path(draft)
-    candidate = supplied if supplied.is_absolute() else project / supplied
-    if (
-        candidate.suffix != ".md"
-        or not candidate.name
-        or str(candidate.parent) != str(writing)
-    ):
+    name = validate_portable_direct_filename(supplied.name)
+    if Path(name).suffix != ".md" or ".." in supplied.parts:
         raise ValueError("draft must be a direct .md file below project writing/")
-    return writing / candidate.name
+    if supplied.is_absolute():
+        if supplied.parent != writing:
+            raise ValueError("draft must be a direct .md file below project writing/")
+    elif supplied.parts == ("writing", name):
+        pass
+    elif supplied.parts == ("projects", project.name, "writing", name):
+        pass
+    else:
+        raise ValueError(
+            "draft must be absolute, writing/<name>.md, or "
+            "projects/<slug>/writing/<name>.md"
+        )
+    candidate = writing / name
+    if candidate.parent != writing or project.parent != workspace / "projects":
+        raise ValueError("draft must be a direct .md file below project writing/")
+    return candidate
 
 
 def _assert_audit_directories(
@@ -597,6 +620,8 @@ def _canonical_plan(plan: ManuscriptPlan) -> bytes:
 
 
 def _selected_ids(brief: object) -> tuple[str, ...]:
+    if brief.idea_state.cycle_state != "completed":  # type: ignore[attr-defined]
+        return ()
     return tuple(brief.idea_state.selected_idea_ids)  # type: ignore[attr-defined]
 
 

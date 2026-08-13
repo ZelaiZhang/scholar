@@ -1514,22 +1514,24 @@ def validate_cycle_artifacts(
             _assert_directory_identity(run_dir, run_identity, context="run")
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(f"meta-review: {exc}")
-    if manifest.state == "completed":
-        try:
-            archive = load_idea_archive(
-                archive_path, allowed_source_ids=source_ids
-            )
-            selected = [
-                idea
-                for idea in archive.ideas
-                if idea.generated_by_run == manifest.run_id and idea.status == "selected"
-            ]
+    try:
+        archive = load_idea_archive(
+            archive_path, allowed_source_ids=source_ids
+        )
+        selected = [
+            idea
+            for idea in archive.ideas
+            if idea.generated_by_run == manifest.run_id and idea.status == "selected"
+        ]
+        if manifest.state != "completed" and selected:
+            raise ValueError("selected Idea requires cycle state completed")
+        if manifest.state == "completed":
             if len(selected) != 1:
                 raise ValueError(
                     "completed run must have exactly one researcher-selected Idea"
                 )
-        except (OSError, UnicodeError, ValueError) as exc:
-            issues.append(f"approval: {exc}")
+    except (OSError, UnicodeError, ValueError) as exc:
+        issues.append(f"approval: {exc}")
     try:
         _assert_direct_file_identity(
             run_dir,

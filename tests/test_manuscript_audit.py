@@ -549,6 +549,23 @@ def test_selected_method_annotation_passes_when_methods_is_ready() -> None:
     assert audit.used_claim_ids == ("FACT-1",)
 
 
+def test_method_annotation_rejects_retained_selection_from_incomplete_cycle() -> None:
+    context = _context(selected_idea_ids=("IDEA-1",))
+    context = replace(context, cycle_state="awaiting_human_decision")
+
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _valid_document(
+                ("Methods", "<!-- research-os:kind=method; idea=IDEA-1 -->\nMethod.")
+            )
+        ),
+        context,
+    )
+
+    assert audit.status == "issues"
+    assert {"IDEA_NOT_SELECTED", "PLAN_BLOCKED"} <= set(_codes(audit))
+
+
 @pytest.mark.parametrize(
     ("status", "expected_code"),
     [("partial", "SECTION_PARTIAL"), ("blocked", "SECTION_BLOCKED")],

@@ -21,6 +21,7 @@ from research_os.io import (
     read_stable_direct_text,
 )
 from research_os.result_inputs import load_result_inputs
+from research_os.result_analysis import validate_result_analysis_completion
 from research_os.knowledge_recommend import (
     KnowledgeRecommendation,
     recommend_for_project,
@@ -91,6 +92,40 @@ def _document_progress(
         return "unstarted", digest, identity
     marker = f"<!-- research-os:stage={completion_marker} -->"
     return ("complete" if marker in actual else "in_progress"), digest, identity
+
+
+def _result_document_progress(
+    project_path: Path,
+    title: str,
+    slug: str,
+    expected_project_identity: tuple[int, int],
+    expected_inputs: tuple[tuple[str, str], ...],
+) -> tuple[str, str, tuple[int, int] | None, str]:
+    """Bind result completion to the current validated artifact name+digest set."""
+    path = project_path / "06-result-analysis.md"
+    if not path.is_file():
+        return "blocked", "missing", None, "结果解读文件缺失"
+    actual = read_stable_direct_text(
+        path,
+        expected_parent=project_path,
+        expected_parent_identity=expected_project_identity,
+    )
+    expected = render_project_template("result-analysis.md", title, slug)
+    digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
+    identity = direct_file_identity(
+        path,
+        expected_parent=project_path,
+        expected_parent_identity=expected_project_identity,
+    )
+    if _normalized(actual) == _normalized(expected):
+        return "unstarted", digest, identity, "结果解读仍是空白模板"
+    validation = validate_result_analysis_completion(actual, expected_inputs)
+    return (
+        "complete" if validation.complete else "in_progress",
+        digest,
+        identity,
+        validation.detail,
+    )
 
 
 def validate_stage_documents(
@@ -343,12 +378,16 @@ def guide_project(
                 expected_parent=ideas_path,
                 expected_parent_identity=ideas_identity,
             )
-            selected_idea_ids = tuple(
+            active_selected_idea_ids = tuple(
                 idea.idea_id
                 for idea in archive.ideas
                 if idea.status == "selected"
                 and idea.generated_by_run == cycle_manifest.run_id
             )
+            if cycle_manifest.state != "completed" and active_selected_idea_ids:
+                cycle_error = "selected Idea 只能属于 completed 的 active cycle"
+            elif cycle_manifest.state == "completed":
+                selected_idea_ids = active_selected_idea_ids
             if cycle_manifest.state == "completed" and not selected_idea_ids:
                 cycle_error = "completed run 缺少匹配的人工批准 Idea"
         except (OSError, UnicodeError, ValueError) as exc:
@@ -368,22 +407,25 @@ def guide_project(
         project_identity,
     )
     design_ready = design_progress == "complete"
-    result_progress, result_sha256, result_identity = _document_progress(
-        project_path,
-        "06-result-analysis.md",
-        "result-analysis.md",
-        manifest.title,
-        manifest.slug,
-        "result-complete",
-        project_identity,
-    )
-    result_ready = result_progress == "complete"
     result_input_snapshot = load_result_inputs(
         project_path,
         project_identity,
     )
     result_artifacts = result_input_snapshot.artifacts
     result_inputs_sha256 = result_input_snapshot.token
+    (
+        result_progress,
+        result_sha256,
+        result_identity,
+        result_validation_detail,
+    ) = _result_document_progress(
+        project_path,
+        manifest.title,
+        manifest.slug,
+        project_identity,
+        tuple((artifact.name, artifact.sha256) for artifact in result_artifacts),
+    )
+    result_ready = result_progress == "complete"
     manuscripts = _markdown_outputs(
         project_path / "writing",
         unchanged_scaffolds={
@@ -442,7 +484,7 @@ def guide_project(
     else:
         result_stage_progress = "in_progress"
         result_status = "进行中"
-        result_detail = f"已导入 {len(result_artifacts)} 个结果文件，尚未解读"
+        result_detail = result_validation_detail
 
     if cycle_error:
         idea_stage_progress = "blocked"
@@ -684,7 +726,7 @@ def guide_project(
         )
     elif not result_ready:
         next_action = NextAction(
-            reason="已发现外部实验结果，但尚未检查它能支持和不能支持的结论。",
+            reason=result_detail,
             target="06-result-analysis.md",
             command=f"$result-interpreter 保守解读 {slug} 的聚合结果并记录负结果与越界结论",
             skill="result-interpreter",

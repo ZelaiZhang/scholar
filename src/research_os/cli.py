@@ -882,24 +882,25 @@ def _run(args: argparse.Namespace) -> int:
                 args.draft,
                 as_of=as_of,
             )
+            if args.format == "json":
+                output = json.dumps(
+                    manuscript_audit_payload(audit),
+                    ensure_ascii=False,
+                    indent=2,
+                ) + "\n"
+            else:
+                output = render_manuscript_audit(audit)
+            print(output, end="")
         except PermissionError as exc:
-            if str(exc) == "PHI_SUSPECTED":
+            if type(exc) is PermissionError and exc.args == ("PHI_SUSPECTED",):
                 raise PermissionError("PHI_SUSPECTED") from None
             raise ValueError("MANUSCRIPT_AUDIT_INPUT_ERROR") from None
         except (UnicodeError, ValueError, FileNotFoundError):
             raise ValueError("MANUSCRIPT_AUDIT_INPUT_ERROR") from None
         except OSError:
             raise OSError("MANUSCRIPT_AUDIT_STATE_CHANGED") from None
-        if args.format == "json":
-            print(
-                json.dumps(
-                    manuscript_audit_payload(audit),
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-        else:
-            print(render_manuscript_audit(audit), end="")
+        except Exception:
+            raise RuntimeError("MANUSCRIPT_AUDIT_INTERNAL_ERROR") from None
         return 1 if audit.issues else 0
     if args.command == "kb":
         if args.kb_command == "doctor":

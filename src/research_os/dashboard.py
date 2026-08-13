@@ -329,8 +329,10 @@ def _idea_status(
     active_ideas = tuple(
         idea for idea in archive.ideas if idea.generated_by_run == manifest.run_id
     )
-    selected = tuple(
-        idea.idea_id for idea in active_ideas if idea.status == "selected"
+    selected = (
+        tuple(idea.idea_id for idea in active_ideas if idea.status == "selected")
+        if manifest.state == "completed"
+        else ()
     )
     state_rank = {
         "candidate_generation": 0,

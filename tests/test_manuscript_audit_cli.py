@@ -106,6 +106,97 @@ def test_builder_accepts_a_direct_utf8_markdown_file_without_writes(tmp_path: Pa
     assert after == before
 
 
+@pytest.mark.parametrize(
+    "draft_argument",
+    (
+        Path("writing") / "draft.md",
+        Path("projects") / "public-project" / "writing" / "draft.md",
+    ),
+)
+def test_builder_accepts_exact_project_and_workspace_relative_draft_forms(
+    tmp_path: Path,
+    draft_argument: Path,
+) -> None:
+    project, _draft = _draft_project(tmp_path)
+
+    audit = build_manuscript_audit(
+        tmp_path,
+        project.name,
+        draft_argument,
+        as_of=date(2026, 8, 13),
+    )
+
+    assert audit.draft_path == "writing/draft.md"
+
+
+def test_builder_rejects_nonportable_direct_draft_basename_before_file_access(
+    tmp_path: Path,
+) -> None:
+    project, _draft = _draft_project(tmp_path)
+    spaced = project / "writing" / "draft notes.md"
+    spaced.write_text("## Abstract\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="portable direct filename"):
+        build_manuscript_audit(
+            tmp_path,
+            project.name,
+            Path("writing") / spaced.name,
+            as_of=date(2026, 8, 13),
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows alternate data stream test")
+def test_builder_rejects_real_windows_alternate_data_stream_draft(
+    tmp_path: Path,
+) -> None:
+    project, _draft = _draft_project(tmp_path)
+    carrier = project / "writing" / "carrier.txt"
+    carrier.write_text("public carrier\n", encoding="utf-8")
+    stream = Path(f"{carrier}:draft.md")
+    try:
+        stream.write_text("## Abstract\nHidden stream draft.\n", encoding="utf-8")
+    except OSError as exc:
+        pytest.skip(f"current Windows volume does not support ADS: {exc}")
+
+    with pytest.raises(ValueError, match="portable direct filename"):
+        build_manuscript_audit(
+            tmp_path,
+            project.name,
+            Path("writing") / stream.name,
+            as_of=date(2026, 8, 13),
+        )
+
+
+def test_cli_accepts_documented_workspace_relative_draft_from_workspace_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project, _draft = _draft_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "manuscript-audit",
+            "--project",
+            project.name,
+            "--draft",
+            "projects/public-project/writing/draft.md",
+            "--workspace",
+            ".",
+            "--as-of",
+            "2026-08-13",
+            "--format",
+            "json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert '"draft_path": "writing/draft.md"' in captured.out
+    assert "MANUSCRIPT_AUDIT_INPUT_ERROR" not in captured.err
+
+
 @pytest.mark.parametrize("relative", ("writing/nested/draft.md", "writing/draft.txt"))
 def test_builder_rejects_nested_and_wrong_extension_drafts(tmp_path: Path, relative: str) -> None:
     project = create_project(tmp_path, "Public project", "public-project")
@@ -447,7 +538,11 @@ def test_builder_detects_selected_idea_drift_when_plan_payload_is_unchanged(
         brief = original_brief(*args, **kwargs)
         return brief if calls == 1 else replace(
             brief,
-            idea_state=replace(brief.idea_state, selected_idea_ids=("idea-drift",)),
+            idea_state=replace(
+                brief.idea_state,
+                cycle_state="completed",
+                selected_idea_ids=("idea-drift",),
+            ),
         )
 
     first_plan: object | None = None
@@ -716,11 +811,150 @@ def test_cli_maps_non_phi_audit_errors_without_echoing_exception(
     assert "MANUSCRIPT_AUDIT_" in captured
 
 
+class SensitiveAuditException(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    "error",
+    (
+        RuntimeError(
+            "SOURCE_NOTE_SECRET C:\\private\\patient.md TOKEN_SECRET "
+            "DRAFT_PROSE_SECRET patient_name=TEST_PERSON_123"
+        ),
+        TypeError(
+            "SOURCE_NOTE_SECRET C:\\private\\patient.md TOKEN_SECRET "
+            "DRAFT_PROSE_SECRET patient_name=TEST_PERSON_123"
+        ),
+        SensitiveAuditException(
+            "SOURCE_NOTE_SECRET C:\\private\\patient.md TOKEN_SECRET "
+            "DRAFT_PROSE_SECRET patient_name=TEST_PERSON_123"
+        ),
+        Exception(
+            "SOURCE_NOTE_SECRET C:\\private\\patient.md TOKEN_SECRET "
+            "DRAFT_PROSE_SECRET patient_name=TEST_PERSON_123"
+        ),
+    ),
+)
+def test_cli_redacts_every_unexpected_builder_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise error
+
+    monkeypatch.setattr(cli_module, "build_manuscript_audit", fail)
+
+    assert main(
+        [
+            "manuscript-audit",
+            "--project",
+            "public-project",
+            "--draft",
+            "writing/draft.md",
+            "--workspace",
+            str(tmp_path),
+        ]
+    ) == 2
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert "MANUSCRIPT_AUDIT_INTERNAL_ERROR" in captured.err
+    for secret in (
+        "SOURCE_NOTE_SECRET",
+        "C:\\private\\patient.md",
+        "TOKEN_SECRET",
+        "DRAFT_PROSE_SECRET",
+        "patient_name=TEST_PERSON_123",
+    ):
+        assert secret not in captured.err
+
+
+@pytest.mark.parametrize(
+    ("target", "output_format"),
+    (("manuscript_audit_payload", "json"), ("render_manuscript_audit", "markdown")),
+)
+def test_cli_redacts_unexpected_payload_and_renderer_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    target: str,
+    output_format: str,
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "build_manuscript_audit",
+        lambda *_args, **_kwargs: _audit(),
+    )
+
+    def fail(_audit_value: object) -> object:
+        raise SensitiveAuditException(
+            "SOURCE_NOTE_SECRET /private/manuscript.md TOKEN_SECRET "
+            "DRAFT_PROSE_SECRET patient_name=TEST_PERSON_123"
+        )
+
+    monkeypatch.setattr(cli_module, target, fail)
+
+    assert main(
+        [
+            "manuscript-audit",
+            "--project",
+            "public-project",
+            "--draft",
+            "writing/draft.md",
+            "--workspace",
+            str(tmp_path),
+            "--format",
+            output_format,
+        ]
+    ) == 2
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert "MANUSCRIPT_AUDIT_INTERNAL_ERROR" in captured.err
+    assert "SOURCE_NOTE_SECRET" not in captured.err
+    assert "/private/manuscript.md" not in captured.err
+    assert "TOKEN_SECRET" not in captured.err
+    assert "DRAFT_PROSE_SECRET" not in captured.err
+    assert "patient_name=TEST_PERSON_123" not in captured.err
+
+
+@pytest.mark.parametrize("interrupt", (KeyboardInterrupt(), SystemExit(7)))
+def test_cli_does_not_catch_process_control_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: BaseException,
+) -> None:
+    def stop(*_args: object, **_kwargs: object) -> object:
+        raise interrupt
+
+    monkeypatch.setattr(cli_module, "build_manuscript_audit", stop)
+
+    with pytest.raises(type(interrupt)):
+        main(
+            [
+                "manuscript-audit",
+                "--project",
+                "public-project",
+                "--draft",
+                "writing/draft.md",
+                "--workspace",
+                str(tmp_path),
+            ]
+        )
+
+
 @pytest.mark.parametrize(
     ("error", "expected_code"),
     (
         (PermissionError("PHI_SUSPECTED"), "PHI_SUSPECTED"),
         (PermissionError("ordinary /poisoned/path"), "MANUSCRIPT_AUDIT_INPUT_ERROR"),
+        (
+            type("PhiLikePermissionError", (PermissionError,), {})("PHI_SUSPECTED"),
+            "MANUSCRIPT_AUDIT_INPUT_ERROR",
+        ),
     ),
 )
 def test_cli_only_preserves_the_exact_phi_permission_sentinel(

@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前发布版本为 `v0.8.0`；草稿审计已纳入本次发布验证，独立的全提交范围审查仍由发布控制器完成。已经完成：
+当前发布版本为 `v0.8.0`；最终 adversarial review 指出的六项 Important 问题已在本工作树修复并重新验证。修复后独立 re-review 仍为 pending，本文不将当前状态记为 APPROVE。已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -45,7 +45,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 21. 只读 `manuscript-audit`：检查八章节 Markdown 草稿的块级隐藏 annotation、账本 provenance、选定 Idea 和已登记聚合结果；不判断语义蕴含或科学正确性。
 
-截至本次发布集成的源码验证，完整测试为 `469 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果将在下方“发布记录”中由实际构建填入；独立全提交范围审查尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+截至本次修复集成的源码验证，完整测试为 `537 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果记录在下方“发布记录”；修复后独立 re-review 尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
 
 ## 3. 系统总览
 
@@ -335,14 +335,18 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `manuscript_markup.py` | 严格解析单行隐藏 annotation，并将八个 H2 章节拆为正文块 | 不保存正文；annotation 只作用于紧邻下一块，注释、标题和 fenced code 不是正文 |
 | `manuscript_audit.py` | 将解析块与两次稳定研究快照、账本、Idea 和结果 provenance 比对，并渲染报告 | 必须保持只读、确定性排序和 `ANNOTATION_NOT_ENTAILMENT` 边界；不得回显草稿正文或内部 identity/token |
 | `result_inputs.py` | 严格读取 `artifacts/results-manifest.yaml` 与直接聚合结果文件 | 校验 schema、SHA256、目录/文件身份、链接与中途替换；登记不等于统计或临床证明 |
+| `result_analysis.py` | 解析、渲染并核对 `06-result-analysis.md` 的逐结果文件 name+SHA256 隐藏绑定 | 完成标记只有在绑定集合与当前已校验结果快照完全一致时有效；不得从私有 API 或猜测生成哈希 |
+| `portable_filename.py` | 为结果输入、结果 annotation 和稿件直接文件提供统一跨平台文件名语法 | 拒绝 ADS、路径分隔符、非 ASCII、尾随点/空格、Windows 设备名、大小写别名和超过 128 字符的名称 |
 
 ### v0.8 草稿审计契约
 
-`manuscript-audit` 只接受课题 `writing/` 下的直接 `.md` 文件，读取草稿及研究状态的稳定快照后再次核对，不写文件、不联网、不调用 provider。先扫描可识别健康信息标记；命中即退出码 `2`，且不得回显草稿内容。所有输入仅限公开或脱敏材料。
+`manuscript-audit` 只接受课题 `writing/` 下的直接 `.md` 文件，读取草稿及研究状态的稳定快照后再次核对，不写文件、不联网、不调用 provider。公开路径形式严格限定为：绝对直接路径、`writing/<portable-name>.md`，或从工作区根目录使用 `projects/<slug>/writing/<portable-name>.md`；不得接受其他相对路径、`nested/..`、链接/reparse/ADS 或设备名。先扫描可识别健康信息标记；命中即退出码 `2`，且不得回显草稿内容。所有输入仅限公开或脱敏材料。
 
-每个问题的稳定 JSON 字段为 `code`、`severity`、`section`、`block_index`、`line`、`claim_ids`、`artifact_names`、`message`。稳定错误码：`PLAN_BLOCKED`、`MISSING_SECTION`、`DUPLICATE_SECTION`、`UNANNOTATED_BLOCK`、`ORPHAN_ANNOTATION`、`INVALID_ANNOTATION`、`KIND_NOT_ALLOWED_IN_SECTION`、`UNKNOWN_CLAIM`、`CLAIM_KIND_MISMATCH`、`CLAIM_NOT_CITABLE`、`CLAIM_INVALID`、`LIMITATION_MISSING`、`IDEA_NOT_SELECTED`、`UNKNOWN_RESULT_ARTIFACT`、`SECTION_BLOCKED`、`SECTION_PARTIAL`。退出码 `0` 是结构/provenance 门禁通过，`1` 是可报告问题，`2` 是不安全或损坏/不稳定输入；三者都不证明语义蕴含、统计正确性、科学结论或临床效用。
+active cycle 只有在 `state=completed` 时才能投影 selected Idea；cycle artifact 校验、dashboard、meeting brief、manuscript plan 和 audit 均独立保留该门禁。结果解读只有在 `06-result-analysis.md` 中每个当前清单文件恰好存在一个精确 `name + sha256` 绑定并带完成标记时才算完成。协调修改结果文件和清单会使旧解读失效；同名同哈希的离线身份替换不要求重做科学解释，但运行中的稳定快照仍拒绝中途替换。
 
-测试归属：annotation 与块解析在 `tests/test_manuscript_markup.py`；审计逻辑、JSON 和快照安全在 `tests/test_manuscript_audit.py`；CLI/PHI/只读行为在 `tests/test_manuscript_audit_cli.py`；结果 artifact 在 `tests/test_result_inputs.py`；新课题模板与技能契约在 `tests/test_project.py`、`tests/test_skills.py`。设计为 `docs/superpowers/specs/2026-08-13-evidence-manuscript-audit-design.md`，实施计划为 `docs/superpowers/plans/2026-08-13-evidence-manuscript-audit.md`；不要在本交接文档复制两者全文。
+每个问题的稳定 JSON 字段为 `code`、`severity`、`section`、`block_index`、`line`、`claim_ids`、`artifact_names`、`message`。稳定错误码：`PLAN_BLOCKED`、`MISSING_SECTION`、`DUPLICATE_SECTION`、`UNANNOTATED_BLOCK`、`ORPHAN_ANNOTATION`、`INVALID_ANNOTATION`、`KIND_NOT_ALLOWED_IN_SECTION`、`UNKNOWN_CLAIM`、`CLAIM_KIND_MISMATCH`、`CLAIM_NOT_CITABLE`、`CLAIM_INVALID`、`LIMITATION_MISSING`、`IDEA_NOT_SELECTED`、`UNKNOWN_RESULT_ARTIFACT`、`SECTION_BLOCKED`、`SECTION_PARTIAL`。退出码 `0` 是结构/provenance 门禁通过，`1` 是可报告问题，`2` 是不安全或损坏/不稳定输入；三者都不证明语义蕴含、统计正确性、科学结论或临床效用。CLI 只保留精确 `PermissionError("PHI_SUSPECTED")` 哨兵；其他普通异常映射为固定 input/state/internal code，不拼接原异常文本，也不捕获 `KeyboardInterrupt` 或 `SystemExit`。
+
+测试归属：annotation 与块解析在 `tests/test_manuscript_markup.py`；审计逻辑、JSON 和快照安全在 `tests/test_manuscript_audit.py`；CLI/PHI/只读行为在 `tests/test_manuscript_audit_cli.py`；结果 artifact 与解读绑定分别在 `tests/test_result_inputs.py`、`tests/test_result_analysis.py`；共享文件名语法在 `tests/test_portable_filename.py`；新课题模板与技能契约在 `tests/test_project.py`、`tests/test_skills.py`。设计为 `docs/superpowers/specs/2026-08-13-evidence-manuscript-audit-design.md`，实施计划为 `docs/superpowers/plans/2026-08-13-evidence-manuscript-audit.md`；不要在本交接文档复制两者全文。
 
 ## 13. 开发与验证
 
@@ -367,6 +371,7 @@ git diff --check
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -p no:cacheprovider -W error -q tests/test_skills.py tests/test_project.py tests/test_workspace.py
+.\.venv\Scripts\python.exe C:\Users\zzt\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents/skills/result-interpreter
 .\.venv\Scripts\python.exe C:\Users\zzt\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents/skills/manuscript-assistant
 ```
 
@@ -378,12 +383,12 @@ git diff --check
 
 ### v0.8 发布记录
 
-- 源码测试：`469 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；`compileall`、`pip check`、`doctor`、`kb doctor` 和 `git diff --check` 均在发布集成时退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
+- 源码测试：`537 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；唯一 skip 为当前平台不允许替换已打开的只读文件。`compileall src tests`、`pip check`、`doctor`、`kb doctor`、两个写作/解读技能的 `quick_validate` 和 `git diff --check` 均退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
 - wheel 文件：`research_os-0.8.0-py3-none-any.whl`（临时构建目录，不写入源码 `dist/`）。
-- wheel SHA256：`5F5612798BB612AA082F66D107C2929689B0E2C7C699D54EBD59EF1C62E46361`。
-- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-release-d2ef9e60b32a46beb0739508121a5a32\target\research_os\__init__.py`，`0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
-- 安装后用户旅程：通过；覆盖新课题大纲的六种可解析 annotation 和不覆盖人工编辑，以及 evidence → cycle → human approval → manuscript-plan → 八节 `manuscript-audit`。审计断言固定日期 JSON 字节稳定、工作区不变、通过状态/零问题、已用 `C001` 和 `aggregate-results.csv`、四条边界及不回显正文/内部 identity/token/snapshot/绝对临时路径/source notes；随后用现有 `I001` 替换事实 annotation，验证退出 `1` 与 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
-- 发布控制器仍需完成独立的全提交范围审查；本节不把该审查标记为完成。
+- wheel SHA256：`EC1AD71515886176A19941FE9D58951A94627DB50EEB53081FE4E440C24A4E70`。
+- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-rereview-final-02a5b9c03f744ac798fa8283dc91fe26\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
+- 安装后用户旅程：通过；从工作区根目录执行 README/技能记录的精确 `--draft projects/wheel-topic/writing/installed-draft.md --workspace .` 形式。旅程覆盖八节审计通过与确定性/不泄漏/不写入检查；然后顺序协调修改结果文件和 manifest 哈希，确认旧解读绑定使审计退出 `1` 且报告 `SECTION_PARTIAL`，更新绑定后才恢复通过；最后仍验证 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
+- 修复后独立 re-review 仍为 pending；本节不将该状态标记为 APPROVE。
 
 测试目录按领域拆分：CLI、课题、来源、证据、PDF、指导、Idea、评审、循环、上下文、provider、doctor、技能与工作区。修复缺陷时先添加能稳定复现问题的测试，再改实现。
 
@@ -546,6 +551,7 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 6. 公共 JSON schema version 1 逐字段序列化，不使用 `asdict`，因此不会随内部 dataclass 扩展泄漏 snapshot token、目录/文件 identity；
 7. 固定 `--as-of` 且输入字节不变时 Markdown/JSON 完全确定，命令执行前后工作区字节不变。
 8. `artifacts/results-manifest.yaml` 是结果输入的唯一登记边界；条目必须给出直接子文件、支持的文本格式、SHA256、`source_repository` 和 `generated_at`。任意 README/日志/未登记文件不得推进 Results，清单、结果或阶段文档在快照期间变化会失败关闭。
+9. `06-result-analysis.md` 的 `result-complete` 必须与当前已校验结果集合逐文件绑定；缺失、重复、未知、额外、格式错误或哈希过期的绑定都会把结果解读退回进行中，并阻断 Results 与审计通过。
 
 命令：
 

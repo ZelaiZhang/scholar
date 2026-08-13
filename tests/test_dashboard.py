@@ -23,6 +23,8 @@ from research_os.ideas import (
     IdeaRecord,
     IdeaScores,
     NoveltyEvidence,
+    approve_idea,
+    load_idea_archive,
     save_idea_archive,
 )
 from research_os.guidance import guide_project
@@ -451,6 +453,26 @@ def test_dashboard_reports_human_decision_and_selected_idea(tmp_path: Path) -> N
     assert selected.idea.cycle_state == "completed"
     assert selected.idea.human_decision_required is False
     assert selected.idea.selected_idea_ids == ("idea-0001",)
+
+
+def test_dashboard_fails_closed_for_selected_archive_before_cycle_completion(
+    tmp_path: Path,
+) -> None:
+    project, source_id = _write_ready_project(tmp_path)
+    _advance_to_human_decision(tmp_path, project, source_id)
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(archive_path, allowed_source_ids={source_id})
+    save_idea_archive(
+        archive_path,
+        approve_idea(archive, "idea-0001", reason="Interrupted approval"),
+    )
+
+    with pytest.raises(ValueError, match="selected.*completed"):
+        build_project_dashboard(
+            tmp_path,
+            project.name,
+            as_of=date(2026, 8, 12),
+        )
 
 
 def test_risks_expose_observed_trigger_without_guessing() -> None:

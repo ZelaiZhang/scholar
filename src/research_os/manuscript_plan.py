@@ -276,11 +276,14 @@ def _section_readiness(
     citation_ids = tuple(claim.claim_id for claim in citation_candidates)
     has_citation = bool(citation_candidates)
     has_limitation = any(claim.limitations.strip() for claim in citation_candidates)
-    selected_ids = set(brief.idea_state.selected_idea_ids)
+    cycle_completed = brief.idea_state.cycle_state == "completed"
+    selected_ids = (
+        set(brief.idea_state.selected_idea_ids) if cycle_completed else set()
+    )
     selected_ideas = tuple(
         idea for idea in brief.ideas if idea.idea_id in selected_ids
     )
-    has_selected_idea = bool(selected_ids) and bool(selected_ideas)
+    has_selected_idea = cycle_completed and bool(selected_ids) and bool(selected_ideas)
     has_medical_safety_boundary = not brief.ideas or all(
         idea.medical_safety_risks for idea in brief.ideas
     )

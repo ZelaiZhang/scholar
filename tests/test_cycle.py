@@ -295,6 +295,40 @@ def test_cycle_reconciles_full_gate_order_and_requires_human_approval(
     assert manifest.calls_used == 0
 
 
+def test_cycle_artifacts_reject_selected_idea_before_run_is_completed(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+    created = advance_cycle(tmp_path, "topic-a")
+    run_id = created.run_id
+    _write_candidates(project, run_id)
+    advance_cycle(tmp_path, "topic-a")
+    _write_candidates(project, run_id, checked=True)
+    advance_cycle(tmp_path, "topic-a")
+    _write_reviews(project, run_id)
+    advance_cycle(tmp_path, "topic-a")
+    _write_meta(project, run_id)
+    assert advance_cycle(tmp_path, "topic-a").state == "awaiting_human_decision"
+
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(archive_path, allowed_source_ids={"src-a"})
+    save_idea_archive(
+        archive_path,
+        approve_idea(archive, "idea-0001", reason="Interrupted approval"),
+    )
+    run_dir = project / "cycles" / run_id
+    manifest = load_cycle_manifest(run_dir / "manifest.yaml")
+
+    issues = validate_cycle_artifacts(
+        run_dir,
+        manifest,
+        source_ids={"src-a"},
+        archive_path=archive_path,
+    )
+
+    assert any("selected" in issue and "completed" in issue for issue in issues)
+
+
 def test_invalid_candidate_artifact_blocks_without_import(tmp_path: Path) -> None:
     project = _project(tmp_path)
     action = advance_cycle(tmp_path, "topic-a")

@@ -59,7 +59,7 @@ Exit codes:
 - `1`: audit completed and found one or more manuscript issues;
 - `2`: unsafe input, identifiable-health-data suspicion, malformed project state, invalid date, path escape, link/reparse point, unstable snapshot, or unreadable draft.
 
-The command never writes files, calls a provider, or accesses the network.
+The command never writes files, calls a provider, or accesses the network. At the CLI boundary, only the exact `PermissionError("PHI_SUSPECTED")` sentinel is preserved; all other ordinary builder/payload/renderer exceptions become fixed input/state/internal codes without exception text. `KeyboardInterrupt` and `SystemExit` are not caught.
 
 ## 5. Annotation grammar
 
@@ -81,7 +81,7 @@ Supported forms:
 <!-- research-os:kind=result; artifacts=<filename>[,<filename>...] -->
 ```
 
-IDs and filenames use only ASCII letters, digits, dot, underscore, colon, and hyphen; they are never inserted into shell commands. Duplicate keys, unknown keys, empty lists, duplicate values, extra text inside the comment, or more than one annotation for a block are invalid.
+Claim/Idea IDs use only ASCII letters, digits, dot, underscore, colon, and hyphen. Result filenames use the stricter shared portable-direct-child grammar: ASCII letters/digits/dot/underscore/hyphen, alphanumeric first, at most 128 characters, and no ADS colon, separator, trailing dot/space, non-ASCII or Windows reserved device basename. Values are never inserted into shell commands. Duplicate keys, unknown keys, empty lists, duplicate values, extra text inside the comment, or more than one annotation for a block are invalid.
 
 The annotation applies only to the next non-empty content block and never crosses a heading. Headings, blank lines, horizontal rules, fenced code, and the annotation comments themselves are not prose blocks. A paragraph, list, block quote, or table is one block until the next blank line or heading.
 
@@ -125,7 +125,7 @@ The annotation must name one Idea that is selected in the active completed resea
 
 ### 6.5 Result blocks
 
-Every named artifact must be a direct file registered by `artifacts/results-manifest.yaml`. Its hash, source repository, generation time, file identity, and manifest identity must pass the existing stable result-input validation. The Results section must be `ready`, which requires aggregate result input and completed conservative interpretation.
+Every named artifact must be a direct file registered by `artifacts/results-manifest.yaml`. Its hash, source repository, generation time, file identity, and manifest identity must pass the existing stable result-input validation. The Results section must be `ready`, which requires aggregate result input and completed conservative interpretation. Completion additionally requires exactly one strict hidden `name + sha256` binding for every current manifest artifact in `06-result-analysis.md`; missing, malformed, duplicate, unknown, extra or stale bindings invalidate the interpretation marker.
 
 An annotation proves provenance, not statistical correctness or clinical utility.
 
@@ -207,7 +207,7 @@ The JSON serializer is explicit. It must not expose direct file identities, dire
 ## 11. Snapshot and file safety
 
 1. Resolve the project through the existing containment and reparse checks.
-2. Require `writing/` to be a real project directory and the draft to be a direct regular `.md` file within it.
+2. Require `writing/` to be a real project directory and the draft to be a direct regular portable-name `.md` file within it. Accept only an absolute direct path, exact project-relative `writing/<name>.md`, or exact workspace-relative `projects/<slug>/writing/<name>.md`; reject other relative forms and lexical aliases such as `nested/..`.
 3. Capture draft and writing-directory identities, read at most 4 MiB as stable UTF-8, then recheck both identities.
 4. Build the v0.7 manuscript plan before and after draft parsing.
 5. Compare the two explicit public plan payloads byte-for-byte. If research state changes, fail with exit code 2 instead of combining time points.

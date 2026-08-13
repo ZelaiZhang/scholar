@@ -29,8 +29,9 @@ description: 基于核验证据账本辅助论文写作。用于生成论文大�
 <!-- research-os:kind=result; artifacts=aggregate-results.csv -->
 ```
 
-- `fact` 仅绑定可引用的已核验 claim；`inference`、`hypothesis` 必须与账本类型完全一致；`limitation` 必须绑定有效局限；`method` 绑定研究者选定的 Idea；`result` 绑定已登记的聚合结果 artifact。
+- `fact` 仅绑定可引用的已核验 claim；`inference`、`hypothesis` 必须与账本类型完全一致；`limitation` 必须绑定有效局限；`method` 只绑定 active cycle 已经 `completed` 后投影的研究者 selected Idea；`result` 只绑定已登记的聚合结果 artifact，且 `06-result-analysis.md` 的逐文件 name+sha256 绑定必须与当前结果清单完全一致。
 - 注释绑定 provenance，不建立语义蕴含、统计正确性或临床效用；研究者必须逐句核对。
+- artifact 文件名使用跨平台直接文件语法，不得使用路径分隔符、Windows ADS/设备名、非 ASCII、尾随点或空格，也不得用大小写别名指向同一结果。
 - 示例不是证据。删除未使用示例；除非对应 ID 或 artifact 真实存在，不得把 `C001`、`I001`、`H001`、`L001`、`idea-0001` 或 `aggregate-results.csv` 当作真实依据。
 - 按用户指定部分起草，不扩张贡献、结果或适用范围，并标记引用缺口、术语不一致和过度声明。
 

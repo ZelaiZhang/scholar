@@ -381,8 +381,11 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         "    generated_at: '2026-08-13T00:00:00Z'\n",
         encoding="utf-8",
     )
-    (project / "06-result-analysis.md").write_text(
+    result_analysis = project / "06-result-analysis.md"
+    result_analysis.write_text(
         "# Result analysis\n\nConservative aggregate interpretation.\n\n"
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={result_sha256} -->\n"
         "<!-- research-os:stage=result-complete -->\n",
         encoding="utf-8",
     )
@@ -449,19 +452,21 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         "--project",
         "wheel-topic",
         "--draft",
-        str(draft),
+        "projects/wheel-topic/writing/installed-draft.md",
         "--as-of",
         "2026-08-13",
         "--format",
         "json",
         "--workspace",
-        str(workspace),
+        ".",
     ]
     audit_before = workspace_bytes(workspace)
-    code, first_audit = run_cli(audit_args)
+    with contextlib.chdir(workspace):
+        code, first_audit = run_cli(audit_args)
     assert code == 0, first_audit
     assert workspace_bytes(workspace) == audit_before
-    code, second_audit = run_cli(audit_args)
+    with contextlib.chdir(workspace):
+        code, second_audit = run_cli(audit_args)
     assert code == 0 and second_audit == first_audit, second_audit
     assert workspace_bytes(workspace) == audit_before
     audit_payload = json.loads(first_audit)
@@ -485,6 +490,38 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         str(workspace),
     ):
         assert forbidden.casefold() not in first_audit.casefold()
+
+    result_path.write_text("metric,value\naccuracy,0.7\n", encoding="utf-8")
+    changed_result_sha256 = hashlib.sha256(result_path.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {changed_result_sha256}\n"
+        "    source_repository: installed-wheel-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    with contextlib.chdir(workspace):
+        code, stale_audit = run_cli(audit_args)
+    assert code == 1, stale_audit
+    stale_payload = json.loads(stale_audit)
+    assert any(
+        issue["code"] == "SECTION_PARTIAL"
+        for issue in stale_payload["issues"]
+    )
+
+    result_analysis.write_text(
+        "# Result analysis\n\nConservative aggregate interpretation retained.\n\n"
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={changed_result_sha256} -->\n"
+        "<!-- research-os:stage=result-complete -->\n",
+        encoding="utf-8",
+    )
+    with contextlib.chdir(workspace):
+        code, rebound_audit = run_cli(audit_args)
+    assert code == 0, rebound_audit
+    assert json.loads(rebound_audit)["status"] == "pass"
+
     draft.write_text(
         draft.read_text(encoding="utf-8").replace(
             "<!-- research-os:kind=fact; claims=C001 -->",
@@ -493,7 +530,8 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         ),
         encoding="utf-8",
     )
-    code, mismatched_audit = run_cli(audit_args)
+    with contextlib.chdir(workspace):
+        code, mismatched_audit = run_cli(audit_args)
     assert code == 1, mismatched_audit
     mismatch_payload = json.loads(mismatched_audit)
     assert any(

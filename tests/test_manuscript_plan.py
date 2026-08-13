@@ -424,6 +424,35 @@ def test_active_shortlisted_medical_idea_also_requires_a_safety_boundary() -> No
     assert "MISSING_MEDICAL_SAFETY_BOUNDARY" in ethics.reason_codes
 
 
+def test_retained_selected_idea_is_not_ready_until_cycle_is_completed() -> None:
+    brief = _brief_with_stage_progress(
+        {
+            "problem_definition": "complete",
+            "evidence_synthesis": "complete",
+            "idea_review": "complete",
+            "experiment_design": "complete",
+            "result_interpretation": "complete",
+        },
+        selected=True,
+    )
+    brief = replace(
+        brief,
+        idea_state=replace(
+            brief.idea_state,
+            cycle_state="awaiting_human_decision",
+            human_decision_required=True,
+        ),
+    )
+
+    plan = manuscript_plan_from_brief(brief)
+    methods = next(item for item in plan.sections if item.code == "methods")
+
+    assert methods.status != "ready"
+    assert "MISSING_SELECTED_IDEA" in methods.reason_codes
+    assert plan.overall_status != "ready_for_outline"
+    assert plan.next_action.code != "DRAFT_EVIDENCE_OUTLINE"
+
+
 def test_public_payload_is_explicit_and_does_not_leak_snapshot_internals() -> None:
     payload = manuscript_plan_payload(manuscript_plan_from_brief(_brief()))
     encoded = json.dumps(payload, ensure_ascii=False)

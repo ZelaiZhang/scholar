@@ -2,6 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+import research_os.manuscript_markup as markup_module
 from research_os.manuscript_markup import (
     ManuscriptAnnotation,
     MarkupIssue,
@@ -98,6 +99,50 @@ def test_parses_each_claim_based_annotation_kind(kind: str) -> None:
         idea_id="",
         artifact_names=(),
         line=11,
+    )
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    (
+        "metrics.csv:private",
+        "CON.csv",
+        "result name.csv",
+        "result.csv.",
+        "结果.csv",
+    ),
+)
+def test_result_annotation_uses_portable_filename_grammar(artifact: str) -> None:
+    assert (
+        parse_annotation(
+            f"<!-- research-os:kind=result; artifacts={artifact} -->",
+            line=1,
+        )
+        is None
+    )
+
+
+def test_claim_and_idea_identifiers_retain_identifier_colons() -> None:
+    claim = parse_annotation(
+        "<!-- research-os:kind=fact; claims=registry:C001 -->",
+        line=1,
+    )
+    idea = parse_annotation(
+        "<!-- research-os:kind=method; idea=cycle:idea-0001 -->",
+        line=2,
+    )
+
+    assert claim is not None and claim.claim_ids == ("registry:C001",)
+    assert idea is not None and idea.idea_id == "cycle:idea-0001"
+
+
+def test_result_annotation_rejects_casefold_duplicate_artifact_names() -> None:
+    assert (
+        parse_annotation(
+            "<!-- research-os:kind=result; artifacts=Data.csv,data.csv -->",
+            line=1,
+        )
+        is None
     )
 
 
@@ -542,3 +587,40 @@ def test_block_indices_scale_and_continue_across_duplicate_section_occurrences()
         ("Abstract", 1),
         ("Abstract", 2 * block_count + 2),
     )
+
+
+def test_four_mebibyte_same_line_comment_chain_uses_linear_suffix_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unit = "<!-- editorial -->"
+    chained_line = unit * ((4 * 1024 * 1024) // len(unit))
+
+    class TrackedLine(str):
+        copied_characters = 0
+        copy_budget = len(chained_line) * 2
+
+        def __getitem__(self, key: object) -> object:
+            result = super().__getitem__(key)  # type: ignore[index]
+            if isinstance(key, slice) and isinstance(result, str):
+                type(self).copied_characters += len(result)
+                if type(self).copied_characters > type(self).copy_budget:
+                    raise AssertionError("same-line parser repeatedly copied suffixes")
+                return type(self)(result)
+            return result
+
+    class PhysicalLineSplitter:
+        @staticmethod
+        def split(_markdown: str) -> list[TrackedLine]:
+            return [
+                TrackedLine("## Abstract"),
+                TrackedLine(chained_line),
+                TrackedLine(""),
+            ]
+
+    monkeypatch.setattr(markup_module, "MARKDOWN_LINE_BREAK", PhysicalLineSplitter())
+
+    parsed = parse_manuscript("ignored by tracking splitter")
+
+    assert parsed.blocks == ()
+    assert parsed.syntax_issues == ()
+    assert TrackedLine.copied_characters <= len(chained_line) * 2

@@ -28,6 +28,12 @@ def test_create_project_instantiates_all_research_artifacts(tmp_path: Path) -> N
     assert (path / "reviews" / ".gitkeep").exists()
     assert (path / "artifacts" / ".gitkeep").exists()
 
+    result_template = (path / "06-result-analysis.md").read_text(encoding="utf-8")
+    assert "results-manifest.yaml" in result_template
+    assert "research-os:result-input" in result_template
+    assert "每个当前结果文件" in result_template
+    assert "research-os:stage=result-complete" in result_template
+
 
 def test_create_project_installs_parseable_manuscript_outline(
     tmp_path: Path,

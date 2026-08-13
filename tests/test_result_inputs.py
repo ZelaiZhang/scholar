@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -212,6 +213,78 @@ def test_load_result_inputs_rejects_duplicate_artifact_path(tmp_path: Path) -> N
         hashlib.sha256(result_path.read_bytes()).hexdigest(),
     )
     _write_manifest(artifacts, entry + entry)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        result_inputs.load_result_inputs(project, directory_identity(project))
+
+
+def test_load_result_inputs_rejects_casefold_duplicate_artifact_names(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "artifacts"
+    artifacts.mkdir(parents=True)
+    upper = artifacts / "Data.csv"
+    lower = artifacts / "data.csv"
+    upper.write_text("metric,value\nscore,1\n", encoding="utf-8")
+    if lower != upper and not lower.exists():
+        lower.write_text("metric,value\nscore,2\n", encoding="utf-8")
+    upper_digest = hashlib.sha256(upper.read_bytes()).hexdigest()
+    lower_digest = hashlib.sha256(lower.read_bytes()).hexdigest()
+    _write_manifest(
+        artifacts,
+        _result_entry(upper.name, upper_digest)
+        + _result_entry(lower.name, lower_digest),
+    )
+
+    with pytest.raises(ValueError, match="duplicate"):
+        result_inputs.load_result_inputs(project, directory_identity(project))
+
+
+def test_load_result_inputs_rejects_duplicate_actual_file_identity(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "artifacts"
+    artifacts.mkdir(parents=True)
+    first = artifacts / "first.csv"
+    second = artifacts / "second.csv"
+    first.write_text("metric,value\nscore,1\n", encoding="utf-8")
+    try:
+        os.link(first, second)
+    except OSError as exc:
+        pytest.skip(f"hard-link creation unavailable: {exc}")
+    digest = hashlib.sha256(first.read_bytes()).hexdigest()
+    _write_manifest(
+        artifacts,
+        _result_entry(first.name, digest) + _result_entry(second.name, digest),
+    )
+
+    with pytest.raises(ValueError, match="same file identity"):
+        result_inputs.load_result_inputs(project, directory_identity(project))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows alternate data stream test")
+def test_load_result_inputs_rejects_real_windows_alternate_data_stream(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "artifacts"
+    artifacts.mkdir(parents=True)
+    base = artifacts / "aggregate.csv"
+    base.write_text("base\n", encoding="utf-8")
+    stream = Path(f"{base}:private")
+    try:
+        stream.write_text("metric,value\nscore,1\n", encoding="utf-8")
+    except OSError as exc:
+        pytest.skip(f"current Windows volume does not support ADS: {exc}")
+    _write_manifest(
+        artifacts,
+        _result_entry(
+            "aggregate.csv:private",
+            hashlib.sha256(stream.read_bytes()).hexdigest(),
+        ),
+    )
 
     with pytest.raises(ValueError, match="unsafe path"):
         result_inputs.load_result_inputs(project, directory_identity(project))
