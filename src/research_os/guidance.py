@@ -346,7 +346,7 @@ def guide_project(
         project_path,
         project_identity,
     )
-    result_inputs = result_input_snapshot.artifacts
+    result_artifacts = result_input_snapshot.artifacts
     result_inputs_sha256 = result_input_snapshot.token
     manuscripts = _markdown_outputs(project_path / "writing")
     reviews = _markdown_outputs(project_path / "reviews")
@@ -388,18 +388,18 @@ def guide_project(
         intake_status = "未开始"
         intake_detail = "尚未为本课题关联来源"
 
-    if not result_inputs:
+    if not result_artifacts:
         result_stage_progress = "unstarted"
         result_status = "未开始"
         result_detail = "等待独立实验仓库的聚合结果"
     elif result_ready:
         result_stage_progress = "complete"
         result_status = "已产出"
-        result_detail = f"已导入 {len(result_inputs)} 个结果文件并完成解读"
+        result_detail = f"已导入 {len(result_artifacts)} 个结果文件并完成解读"
     else:
         result_stage_progress = "in_progress"
         result_status = "进行中"
-        result_detail = f"已导入 {len(result_inputs)} 个结果文件，尚未解读"
+        result_detail = f"已导入 {len(result_artifacts)} 个结果文件，尚未解读"
 
     if cycle_error:
         idea_stage_progress = "blocked"
@@ -629,7 +629,7 @@ def guide_project(
             command=f"$experiment-advisor 为 {slug} 设计基线、消融、指标和失败判据，不执行实验",
             skill="experiment-advisor",
         )
-    elif not result_inputs:
+    elif not result_artifacts:
         next_action = NextAction(
             reason="实验设计已经形成；Research OS 不执行实验，当前应等待外部聚合结果。",
             target="artifacts/",

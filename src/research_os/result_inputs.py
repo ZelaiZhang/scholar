@@ -135,6 +135,8 @@ def load_result_inputs(
         )
         if identity_after != identity_before:
             raise OSError(f"result artifact changed during validation: {relative}")
+        if not actual_text.strip():
+            raise ValueError(f"result artifact is blank: {relative}")
         actual_digest = hashlib.sha256(actual_text.encode("utf-8")).hexdigest()
         if actual_digest != digest:
             raise ValueError(f"result artifact hash mismatch: {relative}")
