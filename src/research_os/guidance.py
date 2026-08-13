@@ -112,7 +112,7 @@ def validate_stage_documents(
                 raise OSError(f"stage document changed after capture: {path}")
             continue
         try:
-            identity = direct_file_identity(
+            identity_before = direct_file_identity(
                 path,
                 expected_parent=project_path,
                 expected_parent_identity=expected_project_identity,
@@ -122,10 +122,19 @@ def validate_stage_documents(
                 expected_parent=project_path,
                 expected_parent_identity=expected_project_identity,
             )
+            identity_after = direct_file_identity(
+                path,
+                expected_parent=project_path,
+                expected_parent_identity=expected_project_identity,
+            )
         except (OSError, ValueError) as exc:
             raise OSError(f"stage document changed after capture: {path}") from exc
         digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
-        if digest != stage.artifact_sha256 or identity != stage.artifact_identity:
+        if (
+            digest != stage.artifact_sha256
+            or identity_before != identity_after
+            or identity_after != stage.artifact_identity
+        ):
             raise OSError(f"stage document changed after capture: {path}")
         if stage.code == "result_interpretation" and stage.dependency_sha256:
             try:
@@ -182,12 +191,24 @@ def _result_inputs(
     manifest_path = artifacts / "results-manifest.yaml"
     if not manifest_path.exists():
         return (), "missing"
+    manifest_identity_before = direct_file_identity(
+        manifest_path,
+        expected_parent=artifacts,
+        expected_parent_identity=artifacts_identity,
+    )
     raw_text = read_stable_direct_text(
         manifest_path,
         expected_parent=artifacts,
         expected_parent_identity=artifacts_identity,
         max_bytes=1024 * 1024,
     )
+    manifest_identity = direct_file_identity(
+        manifest_path,
+        expected_parent=artifacts,
+        expected_parent_identity=artifacts_identity,
+    )
+    if manifest_identity != manifest_identity_before:
+        raise OSError("results manifest changed during validation")
     try:
         raw = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
@@ -197,6 +218,7 @@ def _result_inputs(
     if raw["schema_version"] != 1 or not isinstance(raw["results"], list):
         raise ValueError("results manifest schema_version must be 1 and results a list")
     inputs: list[Path] = []
+    input_identities: list[tuple[int, int]] = []
     seen: set[str] = set()
     required = {"path", "sha256", "source_repository", "generated_at"}
     for index, item in enumerate(raw["results"], 1):
@@ -230,16 +252,29 @@ def _result_inputs(
                 f"results manifest entry {index} has invalid generated_at"
             ) from exc
         path = artifacts / relative
+        identity_before = direct_file_identity(
+            path,
+            expected_parent=artifacts,
+            expected_parent_identity=artifacts_identity,
+        )
         actual_text = read_stable_direct_text(
             path,
             expected_parent=artifacts,
             expected_parent_identity=artifacts_identity,
         )
+        identity_after = direct_file_identity(
+            path,
+            expected_parent=artifacts,
+            expected_parent_identity=artifacts_identity,
+        )
+        if identity_after != identity_before:
+            raise OSError(f"result artifact changed during validation: {relative}")
         actual_digest = hashlib.sha256(actual_text.encode("utf-8")).hexdigest()
         if actual_digest != digest:
             raise ValueError(f"result artifact hash mismatch: {relative}")
         seen.add(relative)
         inputs.append(path)
+        input_identities.append(identity_after)
     assert_directory_identity(artifacts, artifacts_identity, context="artifacts")
     assert_directory_identity(
         project_path,
@@ -248,24 +283,26 @@ def _result_inputs(
     )
     identity_parts = [
         str(artifacts_identity),
-        str(
-            direct_file_identity(
-                manifest_path,
-                expected_parent=artifacts,
-                expected_parent_identity=artifacts_identity,
-            )
-        ),
+        str(manifest_identity),
     ]
-    identity_parts.extend(
-        str(
-            direct_file_identity(
-                path,
-                expected_parent=artifacts,
-                expected_parent_identity=artifacts_identity,
-            )
+    for path, expected_identity in zip(inputs, input_identities, strict=True):
+        current_identity = direct_file_identity(
+            path,
+            expected_parent=artifacts,
+            expected_parent_identity=artifacts_identity,
         )
-        for path in inputs
-    )
+        if current_identity != expected_identity:
+            raise OSError(f"result artifact changed during validation: {path.name}")
+        identity_parts.append(str(current_identity))
+    if (
+        direct_file_identity(
+            manifest_path,
+            expected_parent=artifacts,
+            expected_parent_identity=artifacts_identity,
+        )
+        != manifest_identity
+    ):
+        raise OSError("results manifest changed during validation")
     dependency_token = "\n".join(
         (raw_text, *(str(path.name) for path in inputs), *identity_parts)
     )
