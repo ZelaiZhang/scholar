@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前发布版本为 `v0.8.0`；最终 adversarial review 指出的六项 Important 问题以及随后 re-review 指出的两项 Important 问题已在本工作树修复。最新修复仍待独立 re-review，本文不将当前状态记为 APPROVE。已经完成：
+当前发布版本为 `v0.8.0`；最终 adversarial review 指出的六项 Important 问题以及随后 re-review 指出的两项 Important 问题均已修复并由原审查者逐项复现关闭。最终 verdict 为 `APPROVE`（Critical `0`，Important `0`）。已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -45,7 +45,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 21. 只读 `manuscript-audit`：检查八章节 Markdown 草稿的块级隐藏 annotation、账本 provenance、选定 Idea 和已登记聚合结果；不判断语义蕴含或科学正确性。
 
-截至本次修复集成的源码验证，完整测试为 `580 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果记录在下方“发布记录”；最新修复后独立 re-review 尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+截至本次修复集成的源码验证，完整测试为 `580 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果记录在下方“发布记录”；独立 re-review 已 `APPROVE`。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
 
 ## 3. 系统总览
 
@@ -388,7 +388,7 @@ git diff --check
 - wheel SHA256：`9CCECD27FEF812951D4814D5EA8471E35A64233DFEE8BC7FC1D3E7E633D18C7E`。
 - 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-rereview-771d6ab4b66f4d009503a8c81517f3ba\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
 - 安装后用户旅程：通过；从工作区根目录执行 README/技能记录的精确 `--draft projects/wheel-topic/writing/installed-draft.md --workspace .` 形式。旅程先确认围栏代码中的结果绑定与完成标记不能推进 Results，再以顶层精确独立行恢复；随后覆盖八节审计通过与确定性/不泄漏/不写入检查，并顺序协调修改结果文件和 manifest 哈希，确认旧解读绑定使审计退出 `1` 且报告 `SECTION_PARTIAL`，更新绑定后才恢复通过；最后仍验证 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
-- 最新两项修复后独立 re-review 仍为 pending；本节不将该状态标记为 APPROVE。
+- 最终独立 re-review：`APPROVE`，Critical `0`，Important `0`。审查者复跑了顶层结果 binding、围栏/缩进/外层注释反例、陈旧结果失效与重新绑定、`awaiting_human_decision + selected` 的 API/CLI 拒绝和字节稳定性，并确认合法 completed/awaiting 控制路径未回归。复核提交为 `08036321928b1a078ca744e0017fd038438244d7`。
 
 测试目录按领域拆分：CLI、课题、来源、证据、PDF、指导、Idea、评审、循环、上下文、provider、doctor、技能与工作区。修复缺陷时先添加能稳定复现问题的测试，再改实现。
 
