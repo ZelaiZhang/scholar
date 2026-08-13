@@ -108,6 +108,20 @@ def template_content(name: str, template_root: Path | None) -> str:
     )
 
 
+def render_project_template(
+    name: str,
+    title: str,
+    slug: str,
+    template_root: Path | None = None,
+) -> str:
+    """Render one project template with the same substitutions as scaffolding."""
+    return (
+        template_content(name, template_root)
+        .replace("{{PROJECT_TITLE}}", title.strip())
+        .replace("{{PROJECT_SLUG}}", slug)
+    )
+
+
 def _manifest_path(project_path: Path) -> Path:
     return project_path / "project.yaml"
 
@@ -258,11 +272,13 @@ def create_project(
         for name in ("writing", "reviews", "artifacts"):
             (destination / name).mkdir()
         for source_name, target_name in PROJECT_FILES.items():
-            content = template_content(source_name, template_root)
             atomic_write_text(
                 destination / target_name,
-                content.replace("{{PROJECT_TITLE}}", title.strip()).replace(
-                    "{{PROJECT_SLUG}}", slug
+                render_project_template(
+                    source_name,
+                    title,
+                    slug,
+                    template_root,
                 ),
             )
         write_project_manifest(

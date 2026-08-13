@@ -36,16 +36,24 @@ def test_create_project_installs_parseable_manuscript_outline(
     outline_path = path / "writing" / "manuscript-outline.md"
     outline = outline_path.read_text(encoding="utf-8")
 
-    for annotation in (
+    expected_annotations = {
         "<!-- research-os:kind=fact; claims=C001 -->",
         "<!-- research-os:kind=inference; claims=I001 -->",
         "<!-- research-os:kind=hypothesis; claims=H001 -->",
         "<!-- research-os:kind=limitation; claims=L001 -->",
         "<!-- research-os:kind=method; idea=idea-0001 -->",
         "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->",
-    ):
-        assert annotation in outline
+    }
+    actual_annotations = tuple(
+        line
+        for line in outline.splitlines()
+        if line.startswith("<!-- research-os:kind=")
+    )
+
+    assert set(actual_annotations) == expected_annotations
+    for annotation in actual_annotations:
         assert parse_annotation(annotation, line=1) is not None
+    assert parse_annotation(actual_annotations[0] + " trailing", line=1) is None
 
     assert outline.startswith("# 医疗推理：论文大纲")
     assert "{{PROJECT_TITLE}}" not in outline

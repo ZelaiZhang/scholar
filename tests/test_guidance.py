@@ -3,12 +3,14 @@ from pathlib import Path
 
 import pytest
 
+import research_os.project as project_module
 from research_os.guidance import guide_project, render_guide
 from research_os.project import (
     InvalidSlugError,
     ProjectManifest,
     create_project,
     link_project_sources,
+    load_project_manifest,
     write_project_manifest,
 )
 from research_os.sources import SourceRegistry
@@ -84,6 +86,91 @@ def test_packaged_manuscript_outline_does_not_mark_writing_complete(
 
     assert manuscript.progress == "unstarted"
     assert manuscript.status == "未开始"
+
+
+def test_edited_packaged_manuscript_outline_counts_as_writing(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    outline = project / "writing" / "manuscript-outline.md"
+    outline.write_text(
+        outline.read_text(encoding="utf-8") + "\n研究者新增正文。\n",
+        encoding="utf-8",
+    )
+
+    report = guide_project(tmp_path, "topic-a")
+    manuscript = next(
+        stage for stage in report.stages if stage.code == "manuscript_writing"
+    )
+
+    assert manuscript.progress == "complete"
+    assert manuscript.detail == "writing 中有 1 个 Markdown 稿件"
+
+
+def test_legacy_custom_manuscript_outline_counts_as_writing(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    (project / "writing" / "manuscript-outline.md").write_text(
+        "# 旧课题人工大纲\n\n保留这段人工正文。\n",
+        encoding="utf-8",
+    )
+
+    report = guide_project(tmp_path, "topic-a")
+    manuscript = next(
+        stage for stage in report.stages if stage.code == "manuscript_writing"
+    )
+
+    assert manuscript.progress == "complete"
+
+
+def test_regenerated_scaffold_for_current_project_title_stays_unstarted(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "Old title", "topic-a")
+    manifest = load_project_manifest(project)
+    write_project_manifest(
+        project,
+        ProjectManifest(
+            schema_version=manifest.schema_version,
+            title="Renamed title",
+            slug=manifest.slug,
+            created_at=manifest.created_at,
+            source_ids=manifest.source_ids,
+        ),
+    )
+    expected = (
+        project_module.template_content("manuscript-outline.md", None)
+        .replace("{{PROJECT_TITLE}}", "Renamed title")
+        .replace("{{PROJECT_SLUG}}", "topic-a")
+    )
+    (project / "writing" / "manuscript-outline.md").write_bytes(
+        expected.encode("utf-8")
+    )
+
+    report = guide_project(tmp_path, "topic-a")
+    manuscript = next(
+        stage for stage in report.stages if stage.code == "manuscript_writing"
+    )
+
+    assert manuscript.progress == "unstarted"
+
+
+def test_manuscript_outline_symlink_fails_closed(
+    tmp_path: Path,
+) -> None:
+    project = create_project(tmp_path, "A", "topic-a")
+    outline = project / "writing" / "manuscript-outline.md"
+    outside = tmp_path / "outside-outline.md"
+    outside.write_text("# 外部稿件\n", encoding="utf-8")
+    outline.unlink()
+    try:
+        outline.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"当前平台不能创建文件符号链接: {exc}")
+
+    with pytest.raises(ValueError, match="link|符号链接"):
+        guide_project(tmp_path, "topic-a")
 
 
 def test_guide_exposes_stable_stage_codes_and_progress(tmp_path: Path) -> None:

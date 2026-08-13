@@ -7,9 +7,9 @@ from pathlib import Path
 from research_os.evidence import load_ledger, validate_ledger
 from research_os.project import (
     load_project_manifest,
+    render_project_template,
     resolve_project_path,
     resolve_workspace_directory,
-    template_content,
 )
 from research_os.sources import SourceRegistry
 from research_os.cycle import CycleManifest, load_active_cycle
@@ -68,6 +68,7 @@ def _document_progress(
     filename: str,
     template_name: str,
     title: str,
+    slug: str,
     completion_marker: str,
     expected_project_identity: tuple[int, int],
 ) -> tuple[str, str, tuple[int, int] | None]:
@@ -79,9 +80,7 @@ def _document_progress(
         expected_parent=project_path,
         expected_parent_identity=expected_project_identity,
     )
-    expected = template_content(template_name, None).replace(
-        "{{PROJECT_TITLE}}", title
-    )
+    expected = render_project_template(template_name, title, slug)
     digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
     identity = direct_file_identity(
         path,
@@ -169,17 +168,41 @@ def _linked_paper_card_count(
 
 
 def _markdown_outputs(
-    folder: Path, *, exclude: frozenset[str] = frozenset()
+    folder: Path,
+    *,
+    unchanged_scaffolds: dict[str, str] | None = None,
 ) -> tuple[Path, ...]:
-    if not folder.is_dir():
+    try:
+        folder_identity = directory_identity(folder)
+    except FileNotFoundError:
         return ()
-    return tuple(
-        sorted(
-            path
-            for path in folder.glob("*.md")
-            if path.is_file() and path.name not in exclude
+    scaffolds = unchanged_scaffolds or {}
+    outputs: list[Path] = []
+    for path in sorted(folder.glob("*.md")):
+        identity_before = direct_file_identity(
+            path,
+            expected_parent=folder,
+            expected_parent_identity=folder_identity,
         )
-    )
+        if path.name in scaffolds:
+            actual = read_stable_direct_text(
+                path,
+                expected_parent=folder,
+                expected_parent_identity=folder_identity,
+                max_bytes=4 * 1024 * 1024,
+            )
+            identity_after = direct_file_identity(
+                path,
+                expected_parent=folder,
+                expected_parent_identity=folder_identity,
+            )
+            if identity_after != identity_before:
+                raise OSError(f"manuscript changed during guidance: {path}")
+            if actual == scaffolds[path.name]:
+                continue
+        outputs.append(path)
+    assert_directory_identity(folder, folder_identity, context="manuscript output")
+    return tuple(outputs)
 
 
 def _blocked_action(slug: str, reason: str) -> NextAction:
@@ -267,6 +290,7 @@ def guide_project(
         "00-research-brief.md",
         "research-brief.md",
         manifest.title,
+        manifest.slug,
         "brief-complete",
         project_identity,
     )
@@ -281,6 +305,7 @@ def guide_project(
         "03-literature-review.md",
         "literature-review.md",
         manifest.title,
+        manifest.slug,
         "synthesis-complete",
         project_identity,
     )
@@ -290,6 +315,7 @@ def guide_project(
         "04-idea-candidates.md",
         "idea-candidates.md",
         manifest.title,
+        manifest.slug,
         "idea-complete",
         project_identity,
     )
@@ -337,6 +363,7 @@ def guide_project(
         "05-experiment-design.md",
         "experiment-design.md",
         manifest.title,
+        manifest.slug,
         "design-complete",
         project_identity,
     )
@@ -346,6 +373,7 @@ def guide_project(
         "06-result-analysis.md",
         "result-analysis.md",
         manifest.title,
+        manifest.slug,
         "result-complete",
         project_identity,
     )
@@ -357,7 +385,12 @@ def guide_project(
     result_artifacts = result_input_snapshot.artifacts
     result_inputs_sha256 = result_input_snapshot.token
     manuscripts = _markdown_outputs(
-        project_path / "writing", exclude=frozenset({"manuscript-outline.md"})
+        project_path / "writing",
+        unchanged_scaffolds={
+            "manuscript-outline.md": render_project_template(
+                "manuscript-outline.md", manifest.title, manifest.slug
+            )
+        },
     )
     reviews = _markdown_outputs(project_path / "reviews")
 
