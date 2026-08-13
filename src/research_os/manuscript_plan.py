@@ -442,23 +442,15 @@ def manuscript_plan_from_brief(brief: MeetingBrief) -> ManuscriptPlan:
         )
     elif not citation_candidates:
         overall_status = "blocked"
-        if brief.actions:
-            upstream = brief.actions[0]
-            action = ManuscriptAction(
-                code="ADVANCE_UPSTREAM_GATE",
-                reason=upstream.rationale,
-                target=upstream.expected_artifact,
-                command=upstream.command,
-            )
-        else:
-            action = ManuscriptAction(
-                code="ADVANCE_UPSTREAM_GATE",
-                reason="Build at least one verified, locator-bound fact before writing.",
-                target="02-evidence-ledger.yaml",
-                command=(
-                    f"research-os guide --project {brief.project.slug} --workspace ."
-                ),
-            )
+        action = ManuscriptAction(
+            code="ADVANCE_UPSTREAM_GATE",
+            reason="Build at least one verified, locator-bound fact before writing.",
+            target="02-evidence-ledger.yaml",
+            command=(
+                f"$literature-synthesis 核查 {brief.project.slug} 的当前来源并补建至少一条"
+                "带 source_id、locator 和 limitations 的 verified fact，不编造引用"
+            ),
+        )
     elif all(section.status == "ready" for section in sections):
         overall_status = "ready_for_outline"
         action = ManuscriptAction(

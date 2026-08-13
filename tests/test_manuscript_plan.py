@@ -291,6 +291,16 @@ def test_missing_verified_citation_blocks_overall_readiness() -> None:
         conflicted_claims=(),
         excluded_claims=(),
         open_claims=(_claim("C002", claim_type="fact", status="unverified"),),
+        actions=(
+            DashboardAction(
+                code="APPROVE_IDEA",
+                priority=1,
+                category="research",
+                rationale="Approve a shortlisted Idea.",
+                expected_artifact="ideas/archive.yaml",
+                command="research-os approve-idea --project topic-a --idea IDEA_ID",
+            ),
+        ),
     )
 
     plan = manuscript_plan_from_brief(brief)
@@ -299,6 +309,9 @@ def test_missing_verified_citation_blocks_overall_readiness() -> None:
     assert [claim.claim_id for claim in plan.open_facts] == ["C002"]
     assert plan.overall_status == "blocked"
     assert plan.next_action.code == "ADVANCE_UPSTREAM_GATE"
+    assert plan.next_action.target == "02-evidence-ledger.yaml"
+    assert plan.next_action.command.startswith("$literature-synthesis ")
+    assert "approve-idea" not in plan.next_action.command
 
 
 def test_upstream_action_reuses_the_validated_dashboard_action() -> None:
