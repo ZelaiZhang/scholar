@@ -165,6 +165,27 @@ def test_manuscript_plan_rejects_stage_document_changed_after_guide(
         build_manuscript_plan(tmp_path, project.name, as_of=date(2026, 8, 13))
 
 
+def test_manuscript_plan_rejects_same_content_stage_document_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _write_fixture(tmp_path)
+    result_path = project / "06-result-analysis.md"
+    result_path.write_text("# Result analysis\n\nStable text.\n", encoding="utf-8")
+    original = dashboard_module.guide_project
+
+    def changing_guide(*args, **kwargs):
+        report = original(*args, **kwargs)
+        replacement = project / "result-replacement.tmp"
+        replacement.write_bytes(result_path.read_bytes())
+        replacement.replace(result_path)
+        return report
+
+    monkeypatch.setattr(dashboard_module, "guide_project", changing_guide)
+
+    with pytest.raises(OSError, match="stage document"):
+        build_manuscript_plan(tmp_path, project.name, as_of=date(2026, 8, 13))
+
+
 def test_manuscript_plan_rejects_result_inputs_changed_after_guide(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -186,6 +207,37 @@ def test_manuscript_plan_rejects_result_inputs_changed_after_guide(
     def changing_guide(*args, **kwargs):
         report = original(*args, **kwargs)
         manifest_path.write_text("schema_version: 1\nresults: []\n", encoding="utf-8")
+        return report
+
+    monkeypatch.setattr(dashboard_module, "guide_project", changing_guide)
+
+    with pytest.raises(OSError, match="result inputs"):
+        build_manuscript_plan(tmp_path, project.name, as_of=date(2026, 8, 13))
+
+
+def test_manuscript_plan_rejects_same_content_result_manifest_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _write_fixture(tmp_path)
+    result_path = project / "artifacts" / "aggregate-results.csv"
+    result_path.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    digest = hashlib.sha256(result_path.read_bytes()).hexdigest()
+    manifest_path = project / "artifacts" / "results-manifest.yaml"
+    manifest_path.write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    original = dashboard_module.guide_project
+
+    def changing_guide(*args, **kwargs):
+        report = original(*args, **kwargs)
+        replacement = manifest_path.with_suffix(".replacement")
+        replacement.write_bytes(manifest_path.read_bytes())
+        replacement.replace(manifest_path)
         return report
 
     monkeypatch.setattr(dashboard_module, "guide_project", changing_guide)

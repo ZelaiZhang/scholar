@@ -20,6 +20,7 @@ from research_os.cycle import CycleManifest, load_active_cycle
 from research_os.ideas import load_idea_archive
 from research_os.io import (
     assert_directory_identity,
+    direct_file_identity,
     directory_identity,
     read_stable_direct_text,
 )
@@ -40,6 +41,7 @@ class StageView:
     artifact_path: str = ""
     artifact_sha256: str = ""
     dependency_sha256: str = ""
+    artifact_identity: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -71,10 +73,10 @@ def _document_progress(
     title: str,
     completion_marker: str,
     expected_project_identity: tuple[int, int],
-) -> tuple[str, str]:
+) -> tuple[str, str, tuple[int, int] | None]:
     path = project_path / filename
     if not path.is_file():
-        return "blocked", "missing"
+        return "blocked", "missing", None
     actual = read_stable_direct_text(
         path,
         expected_parent=project_path,
@@ -84,10 +86,15 @@ def _document_progress(
         "{{PROJECT_TITLE}}", title
     )
     digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
+    identity = direct_file_identity(
+        path,
+        expected_parent=project_path,
+        expected_parent_identity=expected_project_identity,
+    )
     if _normalized(actual) == _normalized(expected):
-        return "unstarted", digest
+        return "unstarted", digest, identity
     marker = f"<!-- research-os:stage={completion_marker} -->"
-    return ("complete" if marker in actual else "in_progress"), digest
+    return ("complete" if marker in actual else "in_progress"), digest, identity
 
 
 def validate_stage_documents(
@@ -105,6 +112,11 @@ def validate_stage_documents(
                 raise OSError(f"stage document changed after capture: {path}")
             continue
         try:
+            identity = direct_file_identity(
+                path,
+                expected_parent=project_path,
+                expected_parent_identity=expected_project_identity,
+            )
             actual = read_stable_direct_text(
                 path,
                 expected_parent=project_path,
@@ -113,7 +125,7 @@ def validate_stage_documents(
         except (OSError, ValueError) as exc:
             raise OSError(f"stage document changed after capture: {path}") from exc
         digest = hashlib.sha256(actual.encode("utf-8")).hexdigest()
-        if digest != stage.artifact_sha256:
+        if digest != stage.artifact_sha256 or identity != stage.artifact_identity:
             raise OSError(f"stage document changed after capture: {path}")
         if stage.code == "result_interpretation" and stage.dependency_sha256:
             try:
@@ -234,7 +246,30 @@ def _result_inputs(
         expected_project_identity,
         context="project",
     )
-    return tuple(inputs), hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+    identity_parts = [
+        str(artifacts_identity),
+        str(
+            direct_file_identity(
+                manifest_path,
+                expected_parent=artifacts,
+                expected_parent_identity=artifacts_identity,
+            )
+        ),
+    ]
+    identity_parts.extend(
+        str(
+            direct_file_identity(
+                path,
+                expected_parent=artifacts,
+                expected_parent_identity=artifacts_identity,
+            )
+        )
+        for path in inputs
+    )
+    dependency_token = "\n".join(
+        (raw_text, *(str(path.name) for path in inputs), *identity_parts)
+    )
+    return tuple(inputs), hashlib.sha256(dependency_token.encode("utf-8")).hexdigest()
 
 
 def _markdown_outputs(folder: Path) -> tuple[Path, ...]:
@@ -323,7 +358,7 @@ def guide_project(
     except (OSError, ValueError) as exc:
         ledger_error = str(exc)
 
-    brief_progress, brief_sha256 = _document_progress(
+    brief_progress, brief_sha256, brief_identity = _document_progress(
         project_path,
         "00-research-brief.md",
         "research-brief.md",
@@ -337,7 +372,7 @@ def guide_project(
     )
     raw_claims = ledger.get("claims", [])
     claim_count = len(raw_claims) if isinstance(raw_claims, list) else 0
-    literature_progress, literature_sha256 = _document_progress(
+    literature_progress, literature_sha256, literature_identity = _document_progress(
         project_path,
         "03-literature-review.md",
         "literature-review.md",
@@ -346,7 +381,7 @@ def guide_project(
         project_identity,
     )
     literature_ready = literature_progress == "complete"
-    idea_progress, idea_sha256 = _document_progress(
+    idea_progress, idea_sha256, idea_identity = _document_progress(
         project_path,
         "04-idea-candidates.md",
         "idea-candidates.md",
@@ -393,7 +428,7 @@ def guide_project(
         if cycle_manifest is not None
         else legacy_idea_ready
     )
-    design_progress, design_sha256 = _document_progress(
+    design_progress, design_sha256, design_identity = _document_progress(
         project_path,
         "05-experiment-design.md",
         "experiment-design.md",
@@ -402,7 +437,7 @@ def guide_project(
         project_identity,
     )
     design_ready = design_progress == "complete"
-    result_progress, result_sha256 = _document_progress(
+    result_progress, result_sha256, result_identity = _document_progress(
         project_path,
         "06-result-analysis.md",
         "result-analysis.md",
@@ -509,6 +544,8 @@ def guide_project(
             }[brief_progress],
             "00-research-brief.md",
             brief_sha256,
+            "",
+            brief_identity,
         ),
         StageView(
             "source_intake",
@@ -540,6 +577,8 @@ def guide_project(
             evidence_detail,
             "03-literature-review.md",
             literature_sha256,
+            "",
+            literature_identity,
         ),
         StageView(
             "idea_review",
@@ -549,6 +588,8 @@ def guide_project(
             idea_stage_detail,
             "04-idea-candidates.md",
             idea_sha256,
+            "",
+            idea_identity,
         ),
         StageView(
             "experiment_design",
@@ -563,6 +604,8 @@ def guide_project(
             }[design_progress],
             "05-experiment-design.md",
             design_sha256,
+            "",
+            design_identity,
         ),
         StageView(
             "result_interpretation",
@@ -573,6 +616,7 @@ def guide_project(
             "06-result-analysis.md",
             result_sha256,
             result_inputs_sha256,
+            result_identity,
         ),
         StageView(
             "manuscript_writing",
