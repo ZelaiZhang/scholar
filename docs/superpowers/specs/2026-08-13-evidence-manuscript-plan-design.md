@@ -57,6 +57,7 @@ research-os manuscript-plan `
 - `overall_status`：`blocked`、`partial` 或 `ready_for_outline`
 - `sections`：固定八个论文章节的就绪状态
 - `citation_candidates`：允许进入事实性写作的 claim
+- `open_facts`：尚未核验或仅部分核验、不得进入正文事实候选的 fact
 - `research_statements`：只能以 `inference` 或 `hypothesis` 身份出现的研究陈述
 - `conflicts`：冲突 claim 及其支持、反对定位与限制
 - `excluded_claims`：因账本问题被排除的 claim 和 issue code
@@ -79,6 +80,8 @@ research-os manuscript-plan `
 ### 5.3 ResearchStatement
 
 `inference` 和 `hypothesis` 即使有来源，也不能升级为事实。输出保留原标签、状态、支持/反对定位和限制，供 Introduction、Methods 或 Discussion 的人工论证使用。
+
+`fact` 若为 `unverified` 或 `partially_verified`，单独进入 `open_facts` 并生成补证缺口，不得混入 citation candidates 或 research statements。
 
 ### 5.4 SectionReadiness
 
