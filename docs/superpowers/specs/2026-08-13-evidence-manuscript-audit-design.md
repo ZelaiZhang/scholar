@@ -230,7 +230,8 @@ The report does not reproduce draft paragraphs.
 
 ## 13. Integration changes
 
-- Create `src/research_os/manuscript_audit.py` for parsing, validation, payload, and Markdown rendering.
+- Create `src/research_os/manuscript_markup.py` for the annotation grammar and deterministic Markdown block parser.
+- Create `src/research_os/manuscript_audit.py` for provenance validation, payload, and Markdown rendering.
 - Add the CLI adapter in `src/research_os/cli.py`.
 - Extend `manuscript_plan.py` with a read-only public result-artifact projection only if the audit cannot reuse an existing validated internal representation.
 - Update `src/research_os/templates/manuscript-outline.md` with annotated examples.
