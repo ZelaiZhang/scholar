@@ -31,6 +31,7 @@ AUDITED_SECTIONS = frozenset(
 HEADING = re.compile(r"^(?P<level>#{1,6})[ \t]+(?P<title>.*)$")
 FENCE = re.compile(r"^[ \t]*(?P<marker>`{3,}|~{3,})")
 HORIZONTAL_RULE = re.compile(r"^[ \t]{0,3}(?:\*{3,}|-{3,}|_{3,})[ \t]*$")
+HTML_COMMENT_START = re.compile(r"^[ \t]*<!--")
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,8 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
     pending_section = ""
     pending_index = 0
     in_block = False
-    fence_character: str | None = None
+    fence_marker: tuple[str, int] | None = None
+    in_html_comment = False
 
     def next_block_index() -> int:
         if section is None:
@@ -148,16 +150,25 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
 
     for line_number, raw_line in enumerate(markdown.splitlines(), start=1):
         fence_match = FENCE.match(raw_line)
-        if fence_character is not None:
-            if (
-                fence_match is not None
-                and fence_match.group("marker")[0] == fence_character
-            ):
-                fence_character = None
+        if fence_marker is not None:
+            if fence_match is not None:
+                marker = fence_match.group("marker")
+                if (
+                    marker[0] == fence_marker[0]
+                    and len(marker) >= fence_marker[1]
+                    and raw_line[fence_match.end() :].strip() == ""
+                ):
+                    fence_marker = None
             continue
         if fence_match is not None:
             close_block()
-            fence_character = fence_match.group("marker")[0]
+            marker = fence_match.group("marker")
+            fence_marker = (marker[0], len(marker))
+            continue
+
+        if in_html_comment:
+            if raw_line.rstrip().endswith("-->"):
+                in_html_comment = False
             continue
 
         heading_match = HEADING.fullmatch(raw_line)
@@ -177,9 +188,18 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             close_block()
             continue
 
-        if raw_line.startswith("<!-- research-os:"):
-            close_block()
+        if raw_line.lstrip(" \t").startswith("<!-- research-os:"):
             if section is None:
+                continue
+            if in_block:
+                issues.append(
+                    MarkupIssue(
+                        "INVALID_ANNOTATION",
+                        section,
+                        blocks[-1].block_index,
+                        line_number,
+                    )
+                )
                 continue
             annotation = parse_annotation(raw_line, line=line_number)
             if annotation is None or pending is not None:
@@ -193,6 +213,13 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             pending_section = section
             pending_index = next_block_index()
             continue
+
+        if HTML_COMMENT_START.match(raw_line) is not None:
+            if "-->" not in raw_line:
+                in_html_comment = True
+                continue
+            elif raw_line.rstrip().endswith("-->"):
+                continue
 
         if section is None:
             continue

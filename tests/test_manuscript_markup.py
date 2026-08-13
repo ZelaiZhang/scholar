@@ -86,6 +86,21 @@ def test_rejects_invalid_annotation_grammar(comment: str) -> None:
     assert parse_annotation(comment, line=2) is None
 
 
+@pytest.mark.parametrize("kind", ["inference", "hypothesis", "limitation"])
+def test_parses_each_claim_based_annotation_kind(kind: str) -> None:
+    annotation = parse_annotation(
+        f"<!-- research-os:kind={kind}; claims=claim-1 -->", line=11
+    )
+
+    assert annotation == ManuscriptAnnotation(
+        kind=kind,
+        claim_ids=("claim-1",),
+        idea_id="",
+        artifact_names=(),
+        line=11,
+    )
+
+
 def test_parses_audited_blocks_without_retaining_manuscript_prose() -> None:
     parsed = parse_manuscript(
         "## Abstract\r\n"
@@ -215,4 +230,109 @@ def test_ignores_annotations_inside_fenced_code_and_orphans_at_end() -> None:
     assert parsed.blocks == ()
     assert parsed.syntax_issues == (
         MarkupIssue("ORPHAN_ANNOTATION", "Methods", 1, 6),
+    )
+
+
+def test_only_matching_fence_with_sufficient_length_and_whitespace_closes() -> None:
+    parsed = parse_manuscript(
+        "## Methods\n"
+        "````markdown\n"
+        "<!-- research-os:kind=method; idea=inside-four-backticks -->\n"
+        "```\n"
+        "<!-- research-os:kind=method; idea=still-inside -->\n"
+        "````not-a-close\n"
+        "<!-- research-os:kind=method; idea=also-inside -->\n"
+        "````  \n"
+        "<!-- research-os:kind=method; idea=idea-1 -->\n"
+        "Methods prose.\n"
+        "~~~~\n"
+        "<!-- research-os:kind=method; idea=inside-tilde -->\n"
+        "~~~\n"
+        "~~~~not-a-close\n"
+        "~~~~\t\n"
+        "Methods after tilde.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Methods",
+            1,
+            10,
+            ManuscriptAnnotation("method", (), "idea-1", (), 9),
+        ),
+        ManuscriptBlock("Methods", 2, 16, None),
+    )
+    assert parsed.syntax_issues == ()
+
+
+def test_ordinary_html_comments_do_not_consume_pending_annotation() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!-- editorial note -->\n"
+        "<!--\n"
+        "multi-line editorial note -->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Results",
+            1,
+            6,
+            ManuscriptAnnotation("result", (), "", ("table-1.csv",), 2),
+        ),
+    )
+    assert parsed.syntax_issues == ()
+
+
+def test_editorial_comments_between_annotations_preserve_multiple_annotation_error() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!-- editorial note -->\n"
+        "<!--\n"
+        "more notes\n"
+        "-->\n"
+        "<!-- research-os:kind=fact; claims=claim-1 -->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Results",
+            1,
+            8,
+            ManuscriptAnnotation("result", (), "", ("table-1.csv",), 2),
+        ),
+    )
+    assert parsed.syntax_issues == (
+        MarkupIssue("INVALID_ANNOTATION", "Results", 1, 7),
+    )
+
+
+def test_malformed_research_os_comment_remains_an_invalid_annotation() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=not safe.csv -->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (ManuscriptBlock("Results", 1, 3, None),)
+    assert parsed.syntax_issues == (
+        MarkupIssue("INVALID_ANNOTATION", "Results", 1, 2),
+    )
+
+
+def test_mid_block_annotation_is_invalid_without_splitting_the_block() -> None:
+    parsed = parse_manuscript(
+        "## Introduction\n"
+        "First paragraph fragment.\n"
+        "<!-- research-os:kind=fact; claims=claim-1 -->\n"
+        "Second paragraph fragment.\n"
+    )
+
+    assert parsed.blocks == (ManuscriptBlock("Introduction", 1, 2, None),)
+    assert parsed.syntax_issues == (
+        MarkupIssue("INVALID_ANNOTATION", "Introduction", 1, 3),
     )
