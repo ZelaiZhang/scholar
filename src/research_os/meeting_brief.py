@@ -17,6 +17,7 @@ from research_os.cycle import (
     validate_cycle_artifacts,
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
+from research_os.guidance import StageView
 from research_os.ideas import load_idea_archive
 from research_os.io import (
     assert_directory_identity,
@@ -110,6 +111,7 @@ class MeetingBrief:
     recommendations: tuple[KnowledgeRecommendation, ...]
     risks: tuple[DashboardRisk, ...]
     actions: tuple[DashboardAction, ...]
+    stages: tuple[StageView, ...]
 
 
 def _reference_payload(reference: EvidenceReference) -> dict[str, str]:
@@ -743,4 +745,5 @@ def build_meeting_brief(
         recommendations=snapshot.recommendations,
         risks=snapshot.risks,
         actions=snapshot.actions,
+        stages=snapshot.stages,
     )

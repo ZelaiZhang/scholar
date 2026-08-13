@@ -71,6 +71,28 @@ def test_new_project_recommends_research_brief(tmp_path: Path) -> None:
     assert report.stages[0].status == "未开始"
 
 
+def test_guide_exposes_stable_stage_codes_and_progress(tmp_path: Path) -> None:
+    create_project(tmp_path, "A", "topic-a")
+
+    report = guide_project(tmp_path, "topic-a")
+
+    assert [stage.code for stage in report.stages] == [
+        "problem_definition",
+        "source_intake",
+        "paper_deep_read",
+        "evidence_synthesis",
+        "idea_review",
+        "experiment_design",
+        "result_interpretation",
+        "manuscript_writing",
+        "mock_review",
+    ]
+    assert all(
+        stage.progress in {"blocked", "unstarted", "in_progress", "complete"}
+        for stage in report.stages
+    )
+
+
 def test_edited_brief_without_linked_sources_recommends_intake(
     tmp_path: Path,
 ) -> None:

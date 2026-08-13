@@ -27,7 +27,9 @@ from research_os.project import _is_link_or_reparse_point
 
 @dataclass(frozen=True)
 class StageView:
+    code: str
     name: str
+    progress: str
     status: str
     detail: str
 
@@ -322,29 +324,41 @@ def guide_project(
         synthesis_status = "未开始"
 
     if unknown_linked:
+        intake_progress = "blocked"
         intake_status = "受阻"
         intake_detail = f"{len(unknown_linked)} 个关联来源无效或内容已改变"
     elif manifest.source_ids:
+        intake_progress = "complete"
         intake_status = "已产出"
         intake_detail = f"已显式关联 {len(manifest.source_ids)} 个来源"
     else:
+        intake_progress = "unstarted"
         intake_status = "未开始"
         intake_detail = "尚未为本课题关联来源"
 
     if not result_inputs:
+        result_stage_progress = "unstarted"
         result_status = "未开始"
         result_detail = "等待独立实验仓库的聚合结果"
     elif result_ready:
+        result_stage_progress = "complete"
         result_status = "已产出"
         result_detail = f"已导入 {len(result_inputs)} 个结果文件并完成解读"
     else:
+        result_stage_progress = "in_progress"
         result_status = "进行中"
         result_detail = f"已导入 {len(result_inputs)} 个结果文件，尚未解读"
 
     if cycle_error:
+        idea_stage_progress = "blocked"
         idea_stage_status = "受阻"
         idea_stage_detail = f"科研循环不可读：{cycle_error}"
     elif cycle_manifest is not None:
+        idea_stage_progress = (
+            "complete"
+            if cycle_manifest.state == "completed" and idea_ready
+            else "in_progress"
+        )
         idea_stage_status = (
             "已产出" if cycle_manifest.state == "completed" and idea_ready else "进行中"
         )
@@ -353,6 +367,7 @@ def guide_project(
             f"调用 {cycle_manifest.calls_used}/{cycle_manifest.max_calls}"
         )
     else:
+        idea_stage_progress = idea_progress
         idea_stage_status = _progress_status(idea_progress)
         idea_stage_detail = {
             "blocked": "Idea 文件缺失",
@@ -363,7 +378,9 @@ def guide_project(
 
     stages = (
         StageView(
+            "problem_definition",
             "课题定义",
+            brief_progress,
             _progress_status(brief_progress),
             {
                 "blocked": "研究简报缺失",
@@ -372,20 +389,46 @@ def guide_project(
                 "complete": "研究简报已通过质量门禁",
             }[brief_progress],
         ),
-        StageView("资料导入", intake_status, intake_detail),
         StageView(
+            "source_intake",
+            "资料导入",
+            intake_progress,
+            intake_status,
+            intake_detail,
+        ),
+        StageView(
+            "paper_deep_read",
             "论文精读",
+            "complete" if paper_card_count else "unstarted",
             "已产出" if paper_card_count else "未开始",
             f"找到 {paper_card_count} 张关联论文卡片",
         ),
-        StageView("文献综合", synthesis_status, evidence_detail),
         StageView(
+            "evidence_synthesis",
+            "文献综合",
+            (
+                "blocked"
+                if evidence_blocked
+                else "complete"
+                if claim_count and literature_ready
+                else "in_progress"
+                if claim_count or literature_progress == "in_progress"
+                else "unstarted"
+            ),
+            synthesis_status,
+            evidence_detail,
+        ),
+        StageView(
+            "idea_review",
             "Idea 审查",
+            idea_stage_progress,
             idea_stage_status,
             idea_stage_detail,
         ),
         StageView(
+            "experiment_design",
             "实验设计",
+            design_progress,
             _progress_status(design_progress),
             {
                 "blocked": "实验设计文件缺失",
@@ -394,14 +437,24 @@ def guide_project(
                 "complete": "实验设计已通过质量门禁",
             }[design_progress],
         ),
-        StageView("结果解读", result_status, result_detail),
         StageView(
+            "result_interpretation",
+            "结果解读",
+            result_stage_progress,
+            result_status,
+            result_detail,
+        ),
+        StageView(
+            "manuscript_writing",
             "论文写作",
+            "complete" if manuscripts else "unstarted",
             "已产出" if manuscripts else "未开始",
             f"writing 中有 {len(manuscripts)} 个 Markdown 稿件",
         ),
         StageView(
+            "mock_review",
             "模拟审稿",
+            "complete" if reviews else "unstarted",
             "已产出" if reviews else "未开始",
             f"reviews 中有 {len(reviews)} 个 Markdown 审稿产物",
         ),

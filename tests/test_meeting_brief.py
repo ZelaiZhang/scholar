@@ -216,6 +216,25 @@ def test_meeting_brief_routes_claims_without_promoting_invalid_evidence(
     )
 
 
+def test_meeting_brief_carries_dashboard_stage_snapshot(tmp_path: Path) -> None:
+    project, source_id = _write_meeting_project(tmp_path)
+    _write_claims(project, source_id)
+
+    brief = build_meeting_brief(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 13),
+    )
+
+    assert brief.stages[0].code == "problem_definition"
+    assert [stage.progress for stage in brief.stages[:4]] == [
+        "complete",
+        "complete",
+        "unstarted",
+        "blocked",
+    ]
+
+
 def test_meeting_brief_rejects_project_replacement_after_dashboard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

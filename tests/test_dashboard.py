@@ -242,6 +242,19 @@ def test_dashboard_reports_project_scoped_evidence(tmp_path: Path) -> None:
     assert source_id not in snapshot.project.blockers
 
 
+def test_dashboard_carries_internal_stage_snapshot(tmp_path: Path) -> None:
+    project, _source_id = _write_ready_project(tmp_path)
+
+    snapshot = build_project_dashboard(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 13),
+    )
+
+    assert snapshot.stages == guide_project(tmp_path, project.name).stages
+    assert snapshot.stages[0].code == "problem_definition"
+
+
 def test_dashboard_does_not_count_another_projects_sources(tmp_path: Path) -> None:
     _write_ready_project(
         tmp_path,

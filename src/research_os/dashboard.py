@@ -16,7 +16,7 @@ from research_os.dashboard_risks import (
     evaluate_dashboard_risks,
 )
 from research_os.evidence import ValidationIssue, load_ledger, validate_ledger
-from research_os.guidance import GuideReport, guide_project
+from research_os.guidance import GuideReport, StageView, guide_project
 from research_os.ideas import load_idea_archive
 from research_os.io import (
     assert_directory_identity,
@@ -94,6 +94,7 @@ class ProjectDashboard:
     recommendations: tuple[KnowledgeRecommendation, ...]
     risks: tuple[DashboardRisk, ...]
     actions: tuple[DashboardAction, ...]
+    stages: tuple[StageView, ...]
 
 
 def _safe_direct_file(
@@ -506,6 +507,7 @@ def build_project_dashboard(
         recommendations=guide.method_references[:3],
         risks=risks,
         actions=_dashboard_actions(guide, risks),
+        stages=guide.stages,
     )
     assert_directory_identity(project, project_identity, context="project")
     return dashboard
