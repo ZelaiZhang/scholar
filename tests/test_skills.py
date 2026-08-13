@@ -1,6 +1,9 @@
 from pathlib import Path
+import re
 
 import yaml
+
+from research_os.manuscript_markup import parse_annotation
 
 
 ROOT = Path(__file__).parents[1]
@@ -68,12 +71,36 @@ def test_manuscript_assistant_requires_hidden_provenance_and_final_audit() -> No
     ).read_text(encoding="utf-8")
 
     assert "每个起草的正文块前" in manuscript
-    assert "<!-- research-os:kind=fact; claims=C001 -->" in manuscript
+    annotations = re.findall(r"^<!-- research-os:.* -->$", manuscript, re.MULTILINE)
+    assert len(annotations) == 6
+    assert all(
+        parse_annotation(annotation, line=index) is not None
+        for index, annotation in enumerate(annotations, 1)
+    )
     assert "可见伪标签" in manuscript
-    assert "manuscript-audit" in manuscript
+    assert (
+        ".\\.venv\\Scripts\\research-os.exe manuscript-plan --project <slug> "
+        "--as-of YYYY-MM-DD --format markdown"
+    ) in manuscript
+    assert (
+        ".\\.venv\\Scripts\\research-os.exe validate-ledger "
+        "projects/<slug>/02-evidence-ledger.yaml --workspace ."
+    ) in manuscript
+    assert (
+        ".\\.venv\\Scripts\\research-os.exe manuscript-audit --project <slug> "
+        "--draft projects/<slug>/writing/<draft>.md --as-of YYYY-MM-DD "
+        "--format markdown"
+    ) in manuscript
     assert "语义蕴含" in manuscript
     assert "退出码 `0`" in manuscript
+    assert "退出码 `1`" in manuscript
+    assert "退出码 `2`" in manuscript
+    assert "可识别健康信息" in manuscript
+    assert "绝不覆盖人工文字" in manuscript
+    assert "禁止编造引用、结果、伦理审批、数据许可或临床结论" in manuscript
     assert "不得运行训练" in manuscript
+    assert "不得运行实验" in manuscript
+    assert "不提供个人诊疗建议" in manuscript
 
 
 def test_stage_skills_write_completion_markers_only_after_quality_gates() -> None:

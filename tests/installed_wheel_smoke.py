@@ -20,6 +20,7 @@ from research_os.ideas import (
     NoveltyEvidence,
     save_idea_archive,
 )
+from research_os.manuscript_markup import parse_annotation
 from research_os.project import link_project_sources
 from research_os.sources import SourceRegistry
 
@@ -59,19 +60,40 @@ def main_smoke(workspace: Path, repository: Path) -> None:
 
     code, doctor = run_cli(["doctor", "--workspace", str(workspace)])
     assert code == 0, doctor
-    code, created = run_cli(
-        [
-            "new-project",
-            "--title",
-            "Installed Wheel Topic",
-            "--slug",
-            "wheel-topic",
-            "--workspace",
-            str(workspace),
-        ]
-    )
+    new_project_args = [
+        "new-project",
+        "--title",
+        "Installed Wheel Topic",
+        "--slug",
+        "wheel-topic",
+        "--workspace",
+        str(workspace),
+    ]
+    code, created = run_cli(new_project_args)
     assert code == 0, created
     project = workspace / "projects" / "wheel-topic"
+    outline = (project / "writing" / "manuscript-outline.md").read_text(
+        encoding="utf-8"
+    )
+    assert outline.startswith("# Installed Wheel Topic：论文大纲")
+    annotations = (
+        "<!-- research-os:kind=fact; claims=C001 -->",
+        "<!-- research-os:kind=inference; claims=I001 -->",
+        "<!-- research-os:kind=hypothesis; claims=H001 -->",
+        "<!-- research-os:kind=limitation; claims=L001 -->",
+        "<!-- research-os:kind=method; idea=idea-0001 -->",
+        "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->",
+    )
+    assert all(
+        annotation in outline and parse_annotation(annotation, line=1) is not None
+        for annotation in annotations
+    )
+    outline_path = project / "writing" / "manuscript-outline.md"
+    outline_path.write_text(outline + "\n<!-- researcher edit -->\n", encoding="utf-8")
+    human_outline = outline_path.read_bytes()
+    duplicate_code, _ = run_cli(new_project_args)
+    assert duplicate_code == 2
+    assert outline_path.read_bytes() == human_outline
     (project / "knowledge-profile.yaml").write_text(
         "schema_version: 1\n"
         "domains: [medical-ai]\n"

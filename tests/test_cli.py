@@ -7,6 +7,7 @@ import pytest
 
 import research_os.cli as cli_module
 from research_os.cli import _configure_windows_utf8, build_parser, main
+from research_os.manuscript_markup import parse_annotation
 from research_os.project import create_project, link_project_sources, load_project_manifest
 from research_os.provider import CompletionResult
 from research_os.ideas import (
@@ -57,6 +58,22 @@ def test_cli_creates_project_and_registers_note(
     assert (
         tmp_path / "projects/medical-reasoning/00-research-brief.md"
     ).exists()
+    outline = (
+        tmp_path / "projects/medical-reasoning/writing/manuscript-outline.md"
+    ).read_text(encoding="utf-8")
+    assert outline.startswith("# 医疗推理：论文大纲")
+    annotations = (
+        "<!-- research-os:kind=fact; claims=C001 -->",
+        "<!-- research-os:kind=inference; claims=I001 -->",
+        "<!-- research-os:kind=hypothesis; claims=H001 -->",
+        "<!-- research-os:kind=limitation; claims=L001 -->",
+        "<!-- research-os:kind=method; idea=idea-0001 -->",
+        "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->",
+    )
+    assert all(
+        annotation in outline and parse_annotation(annotation, line=1) is not None
+        for annotation in annotations
+    )
     assert "src-" in capsys.readouterr().out
 
 

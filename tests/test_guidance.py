@@ -72,6 +72,20 @@ def test_new_project_recommends_research_brief(tmp_path: Path) -> None:
     assert report.stages[0].status == "未开始"
 
 
+def test_packaged_manuscript_outline_does_not_mark_writing_complete(
+    tmp_path: Path,
+) -> None:
+    create_project(tmp_path, "A", "topic-a")
+
+    report = guide_project(tmp_path, "topic-a")
+    manuscript = next(
+        stage for stage in report.stages if stage.code == "manuscript_writing"
+    )
+
+    assert manuscript.progress == "unstarted"
+    assert manuscript.status == "未开始"
+
+
 def test_guide_exposes_stable_stage_codes_and_progress(tmp_path: Path) -> None:
     create_project(tmp_path, "A", "topic-a")
 

@@ -7,7 +7,13 @@ description: 基于核验证据账本辅助论文写作。用于生成论文大�
 
 ## 先过门禁
 
-- 读取目标要求、已有人工文字、证据账本和结果解读；先运行 `manuscript-plan` 与 `validate-ledger`，阻塞时只报告缺口，不起草。
+- 读取目标要求、已有人工文字、证据账本和结果解读；依次运行以下只读门禁，阻塞时只报告缺口，不起草：
+
+```powershell
+.\.venv\Scripts\research-os.exe manuscript-plan --project <slug> --as-of YYYY-MM-DD --format markdown
+.\.venv\Scripts\research-os.exe validate-ledger projects/<slug>/02-evidence-ledger.yaml --workspace .
+```
+
 - 发现可识别健康信息立即停止；只处理公开或脱敏资料。
 
 ## 起草规则
@@ -36,6 +42,6 @@ description: 基于核验证据账本辅助论文写作。用于生成论文大�
 .\.venv\Scripts\research-os.exe manuscript-audit --project <slug> --draft projects/<slug>/writing/<draft>.md --as-of YYYY-MM-DD --format markdown
 ```
 
-- 退出码 `0` 表示结构与 provenance 门禁通过，`1` 表示发现问题，`2` 表示不安全或损坏输入；审计不能证明科学、统计或临床正确性。
+- 退出码 `0` 表示结构与 provenance 门禁通过；退出码 `1` 表示发现问题；退出码 `2` 表示不安全或损坏输入。审计不能证明科学、统计或临床正确性。
 - 不得把未核验事实写成论文陈述，禁止编造引用、结果、伦理审批、数据许可或临床结论。
-- 不得运行训练、实验、微调、量化、强化学习或集群任务；不提供个人诊疗建议。
+- 不得运行训练；不得运行实验、微调、量化、强化学习或集群任务；不提供个人诊疗建议。

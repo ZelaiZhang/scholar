@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 import research_os.project as project_module
+from research_os.manuscript_markup import parse_annotation
 from research_os.project import (
     InvalidSlugError,
     ProjectExistsError,
@@ -28,8 +29,12 @@ def test_create_project_instantiates_all_research_artifacts(tmp_path: Path) -> N
     assert (path / "artifacts" / ".gitkeep").exists()
 
 
-def test_packaged_manuscript_outline_teaches_all_hidden_annotation_forms() -> None:
-    outline = project_module.template_content("manuscript-outline.md", None)
+def test_create_project_installs_parseable_manuscript_outline(
+    tmp_path: Path,
+) -> None:
+    path = create_project(tmp_path, "医疗推理", "medical-reasoning")
+    outline_path = path / "writing" / "manuscript-outline.md"
+    outline = outline_path.read_text(encoding="utf-8")
 
     for annotation in (
         "<!-- research-os:kind=fact; claims=C001 -->",
@@ -40,9 +45,25 @@ def test_packaged_manuscript_outline_teaches_all_hidden_annotation_forms() -> No
         "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->",
     ):
         assert annotation in outline
+        assert parse_annotation(annotation, line=1) is not None
 
+    assert outline.startswith("# 医疗推理：论文大纲")
+    assert "{{PROJECT_TITLE}}" not in outline
     assert "不证明语义蕴含、统计正确性或临床效用" in outline
     assert "research-os.exe manuscript-audit" in outline
+
+
+def test_duplicate_project_does_not_overwrite_human_manuscript_outline(
+    tmp_path: Path,
+) -> None:
+    path = create_project(tmp_path, "A", "topic-a")
+    outline = path / "writing" / "manuscript-outline.md"
+    outline.write_text("# 人工修订\n", encoding="utf-8")
+
+    with pytest.raises(ProjectExistsError):
+        create_project(tmp_path, "Replacement", "topic-a")
+
+    assert outline.read_text(encoding="utf-8") == "# 人工修订\n"
 
 
 def test_create_project_writes_manifest_and_start_here(tmp_path: Path) -> None:
@@ -178,3 +199,6 @@ def test_project_templates_do_not_depend_on_repository_relative_module_path(
     assert (path / "00-research-brief.md").read_text(encoding="utf-8").startswith(
         "# Packaged"
     )
+    assert (path / "writing" / "manuscript-outline.md").read_text(
+        encoding="utf-8"
+    ).startswith("# Packaged：论文大纲")

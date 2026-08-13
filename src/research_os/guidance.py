@@ -168,10 +168,18 @@ def _linked_paper_card_count(
     return count
 
 
-def _markdown_outputs(folder: Path) -> tuple[Path, ...]:
+def _markdown_outputs(
+    folder: Path, *, exclude: frozenset[str] = frozenset()
+) -> tuple[Path, ...]:
     if not folder.is_dir():
         return ()
-    return tuple(sorted(path for path in folder.glob("*.md") if path.is_file()))
+    return tuple(
+        sorted(
+            path
+            for path in folder.glob("*.md")
+            if path.is_file() and path.name not in exclude
+        )
+    )
 
 
 def _blocked_action(slug: str, reason: str) -> NextAction:
@@ -348,7 +356,9 @@ def guide_project(
     )
     result_artifacts = result_input_snapshot.artifacts
     result_inputs_sha256 = result_input_snapshot.token
-    manuscripts = _markdown_outputs(project_path / "writing")
+    manuscripts = _markdown_outputs(
+        project_path / "writing", exclude=frozenset({"manuscript-outline.md"})
+    )
     reviews = _markdown_outputs(project_path / "reviews")
 
     ledger_blocked = bool(ledger_error or ledger_issues)

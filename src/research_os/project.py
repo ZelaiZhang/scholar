@@ -34,6 +34,7 @@ PROJECT_FILES = {
     "idea-candidates.md": "04-idea-candidates.md",
     "experiment-design.md": "05-experiment-design.md",
     "result-analysis.md": "06-result-analysis.md",
+    "manuscript-outline.md": "writing/manuscript-outline.md",
 }
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -254,6 +255,8 @@ def create_project(
 
     destination.mkdir(parents=True)
     try:
+        for name in ("writing", "reviews", "artifacts"):
+            (destination / name).mkdir()
         for source_name, target_name in PROJECT_FILES.items():
             content = template_content(source_name, template_root)
             atomic_write_text(
@@ -273,9 +276,7 @@ def create_project(
             ),
         )
         for name in ("writing", "reviews", "artifacts"):
-            folder = destination / name
-            folder.mkdir()
-            (folder / ".gitkeep").touch()
+            (destination / name / ".gitkeep").touch()
     except BaseException:
         for child in sorted(destination.rglob("*"), reverse=True):
             if child.is_file():
