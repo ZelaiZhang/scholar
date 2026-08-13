@@ -439,3 +439,38 @@ def test_spaced_horizontal_rules_split_blocks_without_accepting_mixed_markers() 
         ManuscriptBlock("Abstract", 4, 8, None),
         ManuscriptBlock("Abstract", 5, 10, None),
     )
+
+
+def test_consecutive_ordinary_comments_are_not_a_prose_block() -> None:
+    parsed = parse_manuscript(
+        "## Abstract\n"
+        "<!-- first --> \t <!-- second -->\n"
+        "Actual prose.\n"
+    )
+
+    assert parsed.blocks == (ManuscriptBlock("Abstract", 1, 3, None),)
+    assert parsed.syntax_issues == ()
+
+
+def test_pending_annotation_followed_only_by_consecutive_comments_is_orphaned() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!-- first --><!-- second -->\n"
+    )
+
+    assert parsed.blocks == ()
+    assert parsed.syntax_issues == (
+        MarkupIssue("ORPHAN_ANNOTATION", "Results", 1, 2),
+    )
+
+
+def test_research_os_annotation_after_ordinary_same_line_comment_is_not_bound() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- editorial --><!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (ManuscriptBlock("Results", 1, 3, None),)
+    assert parsed.syntax_issues == ()

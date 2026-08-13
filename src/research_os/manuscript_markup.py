@@ -194,6 +194,24 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             close_block()
             continue
 
+        preceded_by_ordinary_comment = False
+        while HTML_COMMENT_START.match(raw_line) is not None:
+            is_research_annotation = raw_line.lstrip(" \t").startswith(
+                "<!-- research-os:"
+            )
+            if is_research_annotation and not preceded_by_ordinary_comment:
+                break
+            comment_end = raw_line.find("-->")
+            if comment_end == -1:
+                in_html_comment = True
+                raw_line = ""
+                break
+            preceded_by_ordinary_comment = True
+            raw_line = raw_line[comment_end + 3 :]
+
+        if not raw_line.strip():
+            continue
+
         if raw_line.lstrip(" \t").startswith("<!-- research-os:"):
             is_multiline_comment = "-->" not in raw_line
             if section is None:
@@ -226,15 +244,6 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             pending_section = section
             pending_index = next_block_index()
             continue
-
-        if HTML_COMMENT_START.match(raw_line) is not None:
-            comment_end = raw_line.find("-->")
-            if comment_end == -1:
-                in_html_comment = True
-                continue
-            raw_line = raw_line[comment_end + 3 :]
-            if not raw_line.strip():
-                continue
 
         if section is None:
             continue
