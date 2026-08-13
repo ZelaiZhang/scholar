@@ -331,6 +331,28 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     assert len(meeting_payload["discussion_questions"]) <= 3
     assert len(meeting_payload["actions"]) <= 3
     assert workspace_bytes(workspace) == meeting_before
+    manuscript_args = [
+        "manuscript-plan",
+        "--project",
+        "wheel-topic",
+        "--as-of",
+        "2026-08-13",
+        "--format",
+        "json",
+        "--workspace",
+        str(workspace),
+    ]
+    manuscript_before = workspace_bytes(workspace)
+    code, first_plan = run_cli(manuscript_args)
+    assert code == 0, first_plan
+    code, second_plan = run_cli(manuscript_args)
+    assert code == 0 and second_plan == first_plan, second_plan
+    manuscript_payload = json.loads(first_plan)
+    assert manuscript_payload["overall_status"] == "ready_for_outline"
+    assert manuscript_payload["citation_candidates"][0]["claim_id"] == "C001"
+    assert manuscript_payload["sections"][0]["code"] == "abstract"
+    assert len(manuscript_payload["next_actions"]) == 1
+    assert workspace_bytes(workspace) == manuscript_before
     code, guide = run_cli(
         ["guide", "--project", "wheel-topic", "--workspace", str(workspace)]
     )

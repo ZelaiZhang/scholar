@@ -39,6 +39,40 @@
 
 若知识库损坏、科研循环产物哈希不一致、Idea 档案属于其他课题，或 project/ledger/archive 被替换成链接，命令会以错误码 2 关闭，不输出看似健康的部分报告。无效 claim 仍会显示校验问题，但不会计入健康证据数量。
 
+## v0.7 证据绑定论文就绪计划
+
+准备写论文时，先运行一个只读检查，避免把“有一些材料”误当成“这一节已经能写”：
+
+```powershell
+.\.venv\Scripts\research-os.exe manuscript-plan `
+  --project medical-reasoning `
+  --as-of 2026-08-13 `
+  --format markdown
+```
+
+`manuscript-plan` 把当前课题投影为 Abstract、Introduction、Related Work、Methods、Experiments、Results、Limitations and Ethics、Conclusion 八个固定章节，并逐节给出 `ready`、`partial` 或 `blocked`。它不是自动代写器，而是写作前的证据防火墙：
+
+- 只有 `fact + verified + source_id + locator` 完整通过当前课题证据校验的 claim 才进入“可引用事实候选”；
+- 未完全核验的事实、推断、假设、冲突和结构损坏条目严格分栏，绝不静默升级为论文事实；
+- Methods 必须等待研究者人工批准 Idea 和实验设计；Results 必须等待外部结果导入与保守解读；
+- 医疗 Idea 缺少明确安全边界时，Limitations and Ethics 不会显示为就绪；
+- 输出永远只有一个下一步；上游门禁未完成时复用驾驶舱的安全动作，满足条件后才建议调用 `$manuscript-assistant` 创建大纲；
+- 命令只读、不联网、不执行实验、不生成完整论文，也不会把内部快照身份或 token 暴露到 JSON。
+
+典型输出片段：
+
+```markdown
+| Section | Status | Missing gates | Evidence | Artifacts |
+| Introduction | `ready` | - | C001 | 00-research-brief.md, 02-evidence-ledger.yaml |
+| Results | `blocked` | Import external result inputs... | - | 06-result-inputs/, 07-result-interpretation.md |
+
+- **C001** `[fact]` `[verified]`：公开基准报告了该结果
+  - 支持: `src-...` @ p. 4, Table 2
+  - 局限: 仅公开基准，不能证明临床效用
+```
+
+机器集成使用 `--format json`。JSON schema 显式包含 `sections`、`citation_candidates`、`open_facts`、`research_statements`、`conflicts`、`excluded_claims`、单元素 `next_actions` 和 `boundaries`；固定 `--as-of` 且输入不变时输出确定，执行前后工作区字节不变。
+
 ## v0.6 组会研究决策简报
 
 导师汇报或组会前，不必再手工把账本、Idea 和下一步复制到一个文档。运行：
@@ -379,6 +413,7 @@ doctor            只读工作区自检
 guide             课题驾驶舱与唯一下一步
 dashboard         课题全局状态、证据风险与最多三个今日行动
 meeting-brief     证据绑定的组会研究决策简报
+manuscript-plan   八章节证据门禁与唯一写作下一步
 cycle             创建或恢复有界科研循环
 approve-idea      研究者批准当前 run 的入围 Idea
 new-project       创建课题
@@ -415,7 +450,8 @@ git diff --check
 - `kb search` 使用 NFKC、CJK 二元词片和人工双语别名支持中文术语；`kb gaps` 只读生成确定性维护队列。
 - `dashboard` 以版本化 JSON 聚合课题、证据、Idea、方法、风险和行动；固定 `--as-of` 后可复现且执行前后工作区字节不变。
 - `meeting-brief` 只把通过 claim 级校验的结论放入汇报主体；冲突、待核验与排除项分栏展示，并保留 Idea 失败判据和人工理由。
+- `manuscript-plan` 将同一稳定研究快照投影为八个章节门禁；只有核验事实进入引用候选，写作动作仍保留人工审批。
 - 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
 - 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
-日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`，v0.6 组会简报设计见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。
+日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`，v0.6 组会简报设计见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`，v0.7 论文就绪计划设计见 `docs/superpowers/specs/2026-08-13-evidence-manuscript-plan-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。
