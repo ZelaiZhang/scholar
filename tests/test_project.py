@@ -28,6 +28,23 @@ def test_create_project_instantiates_all_research_artifacts(tmp_path: Path) -> N
     assert (path / "artifacts" / ".gitkeep").exists()
 
 
+def test_packaged_manuscript_outline_teaches_all_hidden_annotation_forms() -> None:
+    outline = project_module.template_content("manuscript-outline.md", None)
+
+    for annotation in (
+        "<!-- research-os:kind=fact; claims=C001 -->",
+        "<!-- research-os:kind=inference; claims=I001 -->",
+        "<!-- research-os:kind=hypothesis; claims=H001 -->",
+        "<!-- research-os:kind=limitation; claims=L001 -->",
+        "<!-- research-os:kind=method; idea=idea-0001 -->",
+        "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->",
+    ):
+        assert annotation in outline
+
+    assert "不证明语义蕴含、统计正确性或临床效用" in outline
+    assert "research-os.exe manuscript-audit" in outline
+
+
 def test_create_project_writes_manifest_and_start_here(tmp_path: Path) -> None:
     path = create_project(tmp_path, "医疗推理", "medical-reasoning")
 

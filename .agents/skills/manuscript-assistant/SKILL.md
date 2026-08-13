@@ -5,29 +5,37 @@ description: 基于核验证据账本辅助论文写作。用于生成论文大�
 
 # 基于证据辅助论文写作
 
-## 输入
+## 先过门禁
 
-- 读取目标期刊或会议要求、论文大纲、证据账本、结果分析和研究者已有文字。
-- 先运行 `python -m research_os validate-ledger`。
+- 读取目标要求、已有人工文字、证据账本和结果解读；先运行 `manuscript-plan` 与 `validate-ledger`，阻塞时只报告缺口，不起草。
+- 发现可识别健康信息立即停止；只处理公开或脱敏资料。
 
-## 流程
+## 起草规则
 
-1. 检查材料是否含可识别健康信息；发现后停止。
-2. 为每个事实性句子绑定已核验 claim ID 和来源定位。
-3. 按用户指定部分起草，不擅自扩张贡献、结果或适用范围。
-4. 保持事实、作者解释、研究假设和未来工作之间的边界。
-5. 标记引用缺口、重复论证、术语不一致和过度声明。
-6. 写入 `writing/` 下的新文件或明确的生成区块，等待人工编辑和定稿。
+每个起草的正文块前必须紧邻放一个精确的隐藏注释；不得用 `【fact｜...】` 等可见伪标签替代：
 
-## 硬边界
+```markdown
+<!-- research-os:kind=fact; claims=C001 -->
+<!-- research-os:kind=inference; claims=I001 -->
+<!-- research-os:kind=hypothesis; claims=H001 -->
+<!-- research-os:kind=limitation; claims=L001 -->
+<!-- research-os:kind=method; idea=idea-0001 -->
+<!-- research-os:kind=result; artifacts=aggregate-results.csv -->
+```
 
-- 不得把未核验事实写成论文陈述。
-- 不得生成虚假引用、结果、伦理审批、数据许可或临床结论。
+- `fact` 仅绑定可引用的已核验 claim；`inference`、`hypothesis` 必须与账本类型完全一致；`limitation` 必须绑定有效局限；`method` 绑定研究者选定的 Idea；`result` 绑定已登记的聚合结果 artifact。
+- 注释绑定 provenance，不建立语义蕴含、统计正确性或临床效用；研究者必须逐句核对。
+- 示例不是证据。删除未使用示例；除非对应 ID 或 artifact 真实存在，不得把 `C001`、`I001`、`H001`、`L001`、`idea-0001` 或 `aggregate-results.csv` 当作真实依据。
+- 按用户指定部分起草，不扩张贡献、结果或适用范围，并标记引用缺口、术语不一致和过度声明。
 
-## 质量门禁
+## 收尾与边界
 
-- 禁止编造证据来补齐行文。
-- 保留人工原文和修改痕迹，不静默覆盖。
-- 将模型润色与科学内容修改分开说明。
-- 限制与伦理部分必须覆盖医疗数据和外推风险。
+- 写入 `writing/` 的新文件或明确生成区块，绝不覆盖人工文字；最后运行：
 
+```powershell
+.\.venv\Scripts\research-os.exe manuscript-audit --project <slug> --draft projects/<slug>/writing/<draft>.md --as-of YYYY-MM-DD --format markdown
+```
+
+- 退出码 `0` 表示结构与 provenance 门禁通过，`1` 表示发现问题，`2` 表示不安全或损坏输入；审计不能证明科学、统计或临床正确性。
+- 不得把未核验事实写成论文陈述，禁止编造引用、结果、伦理审批、数据许可或临床结论。
+- 不得运行训练、实验、微调、量化、强化学习或集群任务；不提供个人诊疗建议。

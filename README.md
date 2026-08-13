@@ -73,6 +73,36 @@
 
 机器集成使用 `--format json`。JSON schema 显式包含 `sections`、`citation_candidates`、`open_facts`、`research_statements`、`conflicts`、`excluded_claims`、单元素 `next_actions` 和 `boundaries`；固定 `--as-of` 且输入不变时输出确定，执行前后工作区字节不变。
 
+## v0.8 论文草稿 provenance 审计
+
+先完成 `manuscript-plan` 和账本校验，再对 `writing/` 内的 Markdown 草稿执行只读审计：
+
+```powershell
+.\.venv\Scripts\research-os.exe manuscript-audit `
+  --project medical-reasoning `
+  --draft projects/medical-reasoning/writing/draft.md `
+  --as-of 2026-08-13 `
+  --format markdown
+```
+
+每个八个受审章节中的正文块都要紧邻前置一个隐藏注释。以下是**不陈述研究事实**的占位示例；把占位文字替换为已核验内容，并删除不使用的示例。`C001`、`L001`、`idea-0001` 和 `aggregate-results.csv` 不是默认可用的证据或结果。
+
+```markdown
+<!-- research-os:kind=fact; claims=C001 -->
+【占位：仅在 C001 是当前课题可引用的已核验事实后，写入相应正文。】
+
+<!-- research-os:kind=method; idea=idea-0001 -->
+【占位：仅在该 Idea 经研究者选择且方法门禁通过后，写入方法正文。】
+
+<!-- research-os:kind=result; artifacts=aggregate-results.csv -->
+【占位：仅在文件已登记为脱敏聚合结果且 Results 门禁通过后，写入结果正文。】
+
+<!-- research-os:kind=limitation; claims=L001 -->
+【占位：仅在 L001 是账本中的有效局限后，写入局限正文。】
+```
+
+注释只绑定 provenance，不证明文本对 claim 的语义蕴含、统计正确性或临床效用；研究者仍须逐句审查。审计退出码 `0` 为结构和 provenance 门禁通过，`1` 为已发现问题，`2` 为可识别健康信息疑似、路径/快照不安全或损坏输入。命令不写草稿、不联网、不调用 provider；发现真实病例、姓名、住院号、联系方式等可识别健康信息时停止，不要继续处理或外发。
+
 ## v0.6 组会研究决策简报
 
 导师汇报或组会前，不必再手工把账本、Idea 和下一步复制到一个文档。运行：
@@ -427,6 +457,7 @@ guide             课题驾驶舱与唯一下一步
 dashboard         课题全局状态、证据风险与最多三个今日行动
 meeting-brief     证据绑定的组会研究决策简报
 manuscript-plan   八章节证据门禁与唯一写作下一步
+manuscript-audit  审计 Markdown 草稿的块级 provenance
 cycle             创建或恢复有界科研循环
 approve-idea      研究者批准当前 run 的入围 Idea
 new-project       创建课题
@@ -464,7 +495,8 @@ git diff --check
 - `dashboard` 以版本化 JSON 聚合课题、证据、Idea、方法、风险和行动；固定 `--as-of` 后可复现且执行前后工作区字节不变。
 - `meeting-brief` 只把通过 claim 级校验的结论放入汇报主体；冲突、待核验与排除项分栏展示，并保留 Idea 失败判据和人工理由。
 - `manuscript-plan` 将同一稳定研究快照投影为八个章节门禁；只有核验事实进入引用候选，写作动作仍保留人工审批。
+- `manuscript-audit` 只校验隐藏注释、研究门禁与登记结果 provenance；它不会推断语义蕴含、统计正确性或临床效用。
 - 每条“已报告事实”都必须独立携带当前 `source_id` 和范围一致的 locator；摘要卡不能借正文定位越级。
 - 报告规范适用矩阵采用严格 schema，并在旧规范有 `superseded_by` 时自动路由到已核验的 active 新版。
 
-日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`，v0.6 组会简报设计见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`，v0.7 论文就绪计划设计见 `docs/superpowers/specs/2026-08-13-evidence-manuscript-plan-design.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。
+日常导航设计见 `docs/superpowers/specs/2026-08-12-research-os-daily-driver-design.md`，v0.5 课题研究驾驶舱设计见 `docs/superpowers/specs/2026-08-12-project-research-dashboard-design.md`，v0.6 组会简报设计见 `docs/superpowers/specs/2026-08-12-evidence-meeting-brief-design.md`，v0.7 论文就绪计划设计见 `docs/superpowers/specs/2026-08-13-evidence-manuscript-plan-design.md`，v0.8 审计设计见 `docs/superpowers/specs/2026-08-13-evidence-manuscript-audit-design.md` 与实施计划 `docs/superpowers/plans/2026-08-13-evidence-manuscript-audit.md`。有界 Co-Researcher 设计见 `docs/superpowers/specs/2026-08-12-research-os-co-researcher-design.md`。知识库设计见 `docs/superpowers/specs/2026-08-12-research-methods-knowledge-base-design.md`，开发交接见 `docs/DEVELOPER-HANDOFF.md`。

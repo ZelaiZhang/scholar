@@ -62,6 +62,20 @@ def test_execution_and_writing_skills_have_specific_hard_gates() -> None:
     assert "未核验事实" in manuscript
 
 
+def test_manuscript_assistant_requires_hidden_provenance_and_final_audit() -> None:
+    manuscript = (
+        ROOT / ".agents/skills/manuscript-assistant/SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "每个起草的正文块前" in manuscript
+    assert "<!-- research-os:kind=fact; claims=C001 -->" in manuscript
+    assert "可见伪标签" in manuscript
+    assert "manuscript-audit" in manuscript
+    assert "语义蕴含" in manuscript
+    assert "退出码 `0`" in manuscript
+    assert "不得运行训练" in manuscript
+
+
 def test_stage_skills_write_completion_markers_only_after_quality_gates() -> None:
     expected = {
         "research-project-init": "brief-complete",

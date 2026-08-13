@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.7.0`，已经完成：
+当前发布版本仍为 `v0.7.0`；v0.8 草稿审计代码已集成，版本号与 wheel 仅在完整安装验证后更新。已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -43,6 +43,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 18. 只读、可固定日期的知识维护缺口队列。
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
+21. 只读 `manuscript-audit`：检查八章节 Markdown 草稿的块级隐藏 annotation、账本 provenance、选定 Idea 和已登记聚合结果；不判断语义蕴含或科学正确性。
 
 截至本文档更新，v0.7.0 完整测试为 `317 passed`（warnings-as-errors）；独立安装的 `research_os-0.7.0-py3-none-any.whl` 已完成全用户旅程，最终 SHA256 为 `40643DA030BEEA30A4885E229379F650DF0138C5DA7DCBB2ED8C06430804A75B`。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
 
@@ -134,6 +135,7 @@ flowchart LR
 | `dashboard` | 汇总课题、证据、Idea、方法、风险和最多三个今日行动 | 否 | 否 |
 | `meeting-brief` | 生成带定位、冲突、限制、Idea 边界和讨论问题的组会简报 | 否 | 否 |
 | `manuscript-plan` | 生成八章节论文就绪度、严格证据分栏和唯一下一步 | 否 | 否 |
+| `manuscript-audit` | 审计 Markdown 草稿的块级 provenance 与章节门禁 | 否 | 否 |
 | `new-project` | 创建标准课题目录和模板 | 是 | 否 |
 | `add-source` | 登记、去重并可选关联单条来源 | 是 | 否 |
 | `add-sources` | 从 UTF-8 清单原子批量登记来源 | 是 | 否 |
@@ -155,9 +157,10 @@ flowchart LR
 .\.venv\Scripts\research-os.exe dashboard --project medical-reasoning --as-of 2026-08-12
 .\.venv\Scripts\research-os.exe meeting-brief --project medical-reasoning --as-of 2026-08-12
 .\.venv\Scripts\research-os.exe manuscript-plan --project medical-reasoning --as-of 2026-08-13
+.\.venv\Scripts\research-os.exe manuscript-audit --project medical-reasoning --draft projects/medical-reasoning/writing/draft.md --as-of 2026-08-13 --format markdown
 ```
 
-`guide` 负责唯一下一步，`dashboard` 负责全局研究快照，`meeting-brief` 负责把已经通过证据和 Idea 门禁的内容整理成导师可讨论的研究决策简报，`manuscript-plan` 再把同一快照映射为八个论文章节门禁。四者复用同一阶段与门禁；JSON 是未来接入受控语言润色的稳定边界，但当前命令不联网、不写文件，也不允许模型改变事实、风险、讨论问题或行动优先级。
+`guide` 负责唯一下一步，`dashboard` 负责全局研究快照，`meeting-brief` 负责把已经通过证据和 Idea 门禁的内容整理成导师可讨论的研究决策简报，`manuscript-plan` 把同一快照映射为八个论文章节门禁，`manuscript-audit` 再核验草稿的显式 provenance。它们复用同一阶段与门禁；JSON 是未来接入受控语言润色的稳定边界，但当前命令不联网、不写文件，也不允许模型改变事实、风险、讨论问题或行动优先级。
 
 批量登记来源：
 
@@ -329,6 +332,17 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 | `dashboard_risks.py` | 对结构化事实执行稳定风险规则 | 不读文件、不解析自由文本、不把 unknown 当 observed |
 | `meeting_brief.py` | 逐条路由有效/冲突/待核验/排除 claim，投影 active Idea 并生成组会问题 | 必须保留 locator、limitations、Idea 失败判据和人工理由；不得自动改写事实 |
 | `manuscript_plan.py` | 将稳定简报投影为八章节就绪度、五类证据分栏和一个动作 | 公共 schema 必须显式序列化；不得生成全文、升级 claim 或泄漏内部 identity/token |
+| `manuscript_markup.py` | 严格解析单行隐藏 annotation，并将八个 H2 章节拆为正文块 | 不保存正文；annotation 只作用于紧邻下一块，注释、标题和 fenced code 不是正文 |
+| `manuscript_audit.py` | 将解析块与两次稳定研究快照、账本、Idea 和结果 provenance 比对，并渲染报告 | 必须保持只读、确定性排序和 `ANNOTATION_NOT_ENTAILMENT` 边界；不得回显草稿正文或内部 identity/token |
+| `result_inputs.py` | 严格读取 `artifacts/results-manifest.yaml` 与直接聚合结果文件 | 校验 schema、SHA256、目录/文件身份、链接与中途替换；登记不等于统计或临床证明 |
+
+### v0.8 草稿审计契约
+
+`manuscript-audit` 只接受课题 `writing/` 下的直接 `.md` 文件，读取草稿及研究状态的稳定快照后再次核对，不写文件、不联网、不调用 provider。先扫描可识别健康信息标记；命中即退出码 `2`，且不得回显草稿内容。所有输入仅限公开或脱敏材料。
+
+每个问题的稳定 JSON 字段为 `code`、`severity`、`section`、`block_index`、`line`、`claim_ids`、`artifact_names`、`message`。稳定错误码：`PLAN_BLOCKED`、`MISSING_SECTION`、`DUPLICATE_SECTION`、`UNANNOTATED_BLOCK`、`ORPHAN_ANNOTATION`、`INVALID_ANNOTATION`、`KIND_NOT_ALLOWED_IN_SECTION`、`UNKNOWN_CLAIM`、`CLAIM_KIND_MISMATCH`、`CLAIM_NOT_CITABLE`、`CLAIM_INVALID`、`LIMITATION_MISSING`、`IDEA_NOT_SELECTED`、`UNKNOWN_RESULT_ARTIFACT`、`SECTION_BLOCKED`、`SECTION_PARTIAL`。退出码 `0` 是结构/provenance 门禁通过，`1` 是可报告问题，`2` 是不安全或损坏/不稳定输入；三者都不证明语义蕴含、统计正确性、科学结论或临床效用。
+
+测试归属：annotation 与块解析在 `tests/test_manuscript_markup.py`；审计逻辑、JSON 和快照安全在 `tests/test_manuscript_audit.py`；CLI/PHI/只读行为在 `tests/test_manuscript_audit_cli.py`；结果 artifact 在 `tests/test_result_inputs.py`；新课题模板与技能契约在 `tests/test_project.py`、`tests/test_skills.py`。设计为 `docs/superpowers/specs/2026-08-13-evidence-manuscript-audit-design.md`，实施计划为 `docs/superpowers/plans/2026-08-13-evidence-manuscript-audit.md`；不要在本交接文档复制两者全文。
 
 ## 13. 开发与验证
 
@@ -347,6 +361,13 @@ $env:PYTHONUTF8="1"
 .\.venv\Scripts\python.exe -m pytest -q -W error
 .\.venv\Scripts\python.exe -m pip check
 git diff --check
+```
+
+修改 v0.8 审计、模板或写作技能后，还必须运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider -W error -q tests/test_skills.py tests/test_project.py tests/test_workspace.py
+.\.venv\Scripts\python.exe C:\Users\zzt\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents/skills/manuscript-assistant
 ```
 
 发布或修改打包配置时，还应从临时目录安装 wheel，并运行 `tests/installed_wheel_smoke.py` 覆盖源码目录之外的真实安装路径。构建示例：
