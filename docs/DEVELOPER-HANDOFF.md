@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-13；包版本：`0.7.0`；功能基线以本文档所在提交为准。
+> 最后核对：2026-08-13；包版本：`0.8.0`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前发布版本仍为 `v0.7.0`；v0.8 草稿审计代码已集成，版本号与 wheel 仅在完整安装验证后更新。已经完成：
+当前发布版本为 `v0.8.0`；草稿审计已纳入本次发布验证，独立的全提交范围审查仍由发布控制器完成。已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -45,7 +45,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 21. 只读 `manuscript-audit`：检查八章节 Markdown 草稿的块级隐藏 annotation、账本 provenance、选定 Idea 和已登记聚合结果；不判断语义蕴含或科学正确性。
 
-截至本文档更新，v0.7.0 完整测试为 `317 passed`（warnings-as-errors）；独立安装的 `research_os-0.7.0-py3-none-any.whl` 已完成全用户旅程，最终 SHA256 为 `40643DA030BEEA30A4885E229379F650DF0138C5DA7DCBB2ED8C06430804A75B`。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+截至本次发布集成的源码验证，完整测试为 `469 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果将在下方“发布记录”中由实际构建填入；独立全提交范围审查尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
 
 ## 3. 系统总览
 
@@ -370,11 +370,20 @@ git diff --check
 .\.venv\Scripts\python.exe C:\Users\zzt\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents/skills/manuscript-assistant
 ```
 
-发布或修改打包配置时，还应从临时目录安装 wheel，并运行 `tests/installed_wheel_smoke.py` 覆盖源码目录之外的真实安装路径。构建示例：
+发布或修改打包配置时，还应从源码 `dist/` 之外的临时目录构建 wheel，安装到另一个临时 target，并用 `-P`、仅指向 target 的 `PYTHONPATH` 在源码目录之外确认模块路径和版本；随后运行 `tests/installed_wheel_smoke.py` 覆盖源码目录之外的真实安装路径。构建示例：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist
 ```
+
+### v0.8 发布记录
+
+- 源码测试：`469 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；`compileall`、`pip check`、`doctor`、`kb doctor` 和 `git diff --check` 均在发布集成时退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
+- wheel 文件：`research_os-0.8.0-py3-none-any.whl`（临时构建目录，不写入源码 `dist/`）。
+- wheel SHA256：`5F5612798BB612AA082F66D107C2929689B0E2C7C699D54EBD59EF1C62E46361`。
+- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-release-d2ef9e60b32a46beb0739508121a5a32\target\research_os\__init__.py`，`0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
+- 安装后用户旅程：通过；覆盖新课题大纲的六种可解析 annotation 和不覆盖人工编辑，以及 evidence → cycle → human approval → manuscript-plan → 八节 `manuscript-audit`。审计断言固定日期 JSON 字节稳定、工作区不变、通过状态/零问题、已用 `C001` 和 `aggregate-results.csv`、四条边界及不回显正文/内部 identity/token/snapshot/绝对临时路径/source notes；随后用现有 `I001` 替换事实 annotation，验证退出 `1` 与 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
+- 发布控制器仍需完成独立的全提交范围审查；本节不把该审查标记为完成。
 
 测试目录按领域拆分：CLI、课题、来源、证据、PDF、指导、Idea、评审、循环、上下文、provider、doctor、技能与工作区。修复缺陷时先添加能稳定复现问题的测试，再改实现。
 

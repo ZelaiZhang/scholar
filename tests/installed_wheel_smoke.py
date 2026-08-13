@@ -171,7 +171,7 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     assert 1 <= len(recommendations) <= 3
     assert any(item["kind"] == "reporting-guideline" for item in recommendations)
     source = SourceRegistry(workspace / "library" / "sources.jsonl").add(
-        "doi:10.1000/wheel-smoke"
+        "doi:10.1000/wheel-smoke", notes="SOURCE_NOTE_SHOULD_NOT_LEAK"
     )
     link_project_sources(workspace, "wheel-topic", [source.source_id])
     papers = workspace / "library" / "papers"
@@ -194,6 +194,17 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         "    limitations: Packaging smoke only.\n",
         encoding="utf-8",
     )
+    with (project / "02-evidence-ledger.yaml").open("a", encoding="utf-8") as ledger:
+        ledger.write(
+            "  - claim_id: I001\n"
+            "    statement: The evidence gate may reduce unsupported conclusions.\n"
+            "    type: inference\n"
+            "    status: unverified\n"
+            "    support: []\n"
+            "    opposition: []\n"
+            "    confidence: low\n"
+            "    limitations: Packaging smoke inference only.\n"
+        )
     (project / "03-literature-review.md").write_text(
         "# Literature review\n\nEvidence synthesized.\n\n"
         "<!-- research-os:stage=synthesis-complete -->\n",
@@ -400,11 +411,96 @@ def main_smoke(workspace: Path, repository: Path) -> None:
     code, guide = run_cli(
         ["guide", "--project", "wheel-topic", "--workspace", str(workspace)]
     )
-    assert code == 0 and "$manuscript-assistant" in guide, guide
+    assert code == 0 and "$mock-reviewer" in guide, guide
     assert guide.count("## 下一步") == 1
     assert "## 方法学参考" in guide
     code, final_doctor = run_cli(["doctor", "--workspace", str(workspace)])
     assert code == 0, final_doctor
+    draft = project / "writing" / "installed-draft.md"
+    draft.write_text(
+        "## Abstract\n\n"
+        "<!-- research-os:kind=fact; claims=C001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Public evidence summary.\n\n"
+        "## Introduction\n\n"
+        "<!-- research-os:kind=fact; claims=C001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Evidence-bound introduction.\n\n"
+        "## Related Work\n\n"
+        "<!-- research-os:kind=fact; claims=C001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Related public evidence.\n\n"
+        "## Methods\n\n"
+        "<!-- research-os:kind=method; idea=idea-0001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Bounded method description.\n\n"
+        "## Experiments\n\n"
+        "<!-- research-os:kind=method; idea=idea-0001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: External experiment design.\n\n"
+        "## Results\n\n"
+        "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Registered aggregate result.\n\n"
+        "## Limitations and Ethics\n\n"
+        "<!-- research-os:kind=limitation; claims=C001 -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Packaging limitation.\n\n"
+        "## Conclusion\n\n"
+        "<!-- research-os:kind=result; artifacts=aggregate-results.csv -->\n"
+        "SMOKE_MANUSCRIPT_PROSE: Bounded conclusion.\n",
+        encoding="utf-8",
+    )
+    audit_args = [
+        "manuscript-audit",
+        "--project",
+        "wheel-topic",
+        "--draft",
+        str(draft),
+        "--as-of",
+        "2026-08-13",
+        "--format",
+        "json",
+        "--workspace",
+        str(workspace),
+    ]
+    audit_before = workspace_bytes(workspace)
+    code, first_audit = run_cli(audit_args)
+    assert code == 0, first_audit
+    assert workspace_bytes(workspace) == audit_before
+    code, second_audit = run_cli(audit_args)
+    assert code == 0 and second_audit == first_audit, second_audit
+    assert workspace_bytes(workspace) == audit_before
+    audit_payload = json.loads(first_audit)
+    assert audit_payload["status"] == "pass"
+    assert audit_payload["issues"] == []
+    assert audit_payload["used_claim_ids"] == ["C001"]
+    assert audit_payload["used_result_artifacts"] == ["aggregate-results.csv"]
+    assert len(audit_payload["sections"]) == 8
+    assert audit_payload["boundaries"] == [
+        "ANNOTATION_NOT_ENTAILMENT",
+        "This audit is not clinical decision support.",
+        "Research OS did not rewrite the manuscript or execute experiments.",
+        "The researcher must verify semantic entailment and approve every statement.",
+    ]
+    for forbidden in (
+        "SMOKE_MANUSCRIPT_PROSE",
+        "SOURCE_NOTE_SHOULD_NOT_LEAK",
+        "identity",
+        "token",
+        "snapshot",
+        str(workspace),
+    ):
+        assert forbidden.casefold() not in first_audit.casefold()
+    draft.write_text(
+        draft.read_text(encoding="utf-8").replace(
+            "<!-- research-os:kind=fact; claims=C001 -->",
+            "<!-- research-os:kind=fact; claims=I001 -->",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    code, mismatched_audit = run_cli(audit_args)
+    assert code == 1, mismatched_audit
+    mismatch_payload = json.loads(mismatched_audit)
+    assert any(
+        issue["code"] == "CLAIM_KIND_MISMATCH"
+        for issue in mismatch_payload["issues"]
+    )
+    assert "SMOKE_MANUSCRIPT_PROSE" not in mismatched_audit
 
 
 if __name__ == "__main__":
