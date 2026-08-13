@@ -341,10 +341,15 @@ def build_manuscript_audit(
 
 
 def _safe_draft_path(project: Path, writing: Path, draft: Path) -> Path:
-    candidate = draft if draft.is_absolute() else project / draft
-    if candidate.suffix != ".md" or candidate.parent.resolve() != writing:
+    supplied = Path(draft)
+    candidate = supplied if supplied.is_absolute() else project / supplied
+    if (
+        candidate.suffix != ".md"
+        or not candidate.name
+        or str(candidate.parent) != str(writing)
+    ):
         raise ValueError("draft must be a direct .md file below project writing/")
-    return candidate
+    return writing / candidate.name
 
 
 def _assert_audit_directories(

@@ -891,7 +891,7 @@ def _run(args: argparse.Namespace) -> int:
             )
         else:
             print(render_manuscript_audit(audit), end="")
-        return 0 if audit.status == "pass" else 1
+        return 1 if audit.issues else 0
     if args.command == "kb":
         if args.kb_command == "doctor":
             report = inspect_knowledge_base(args.workspace)
