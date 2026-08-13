@@ -17,6 +17,9 @@ _BINDING_PATTERN = re.compile(
     r"sha256=(?P<sha256>[0-9a-f]{64}) -->\Z"
 )
 _BINDING_SENTINEL = "research-os:result-input"
+_FENCE_PATTERN = re.compile(r"^ {0,3}(?P<marker>`{3,}|~{3,})")
+_HTML_COMMENT_TOKEN = re.compile(r"<!--|-->")
+_MARKDOWN_LINE_BREAK = re.compile(r"\r\n|\r|\n")
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,78 @@ class ResultAnalysisValidation:
     code: str
     detail: str
     bindings: tuple[ResultInputBinding, ...]
+
+
+@dataclass(frozen=True)
+class _LiveResultComment:
+    line: int
+    text: str
+
+
+def _consume_html_comment(line: str, cursor: int, depth: int) -> tuple[int, int]:
+    """Consume one possibly nested ordinary comment using a monotonic cursor."""
+    for match in _HTML_COMMENT_TOKEN.finditer(line, cursor):
+        if match.group() == "<!--":
+            depth += 1
+            continue
+        depth -= 1
+        if depth == 0:
+            return match.end(), depth
+    return len(line), depth
+
+
+def _live_result_comments(markdown: str) -> tuple[_LiveResultComment, ...]:
+    """Return standalone top-level Research OS comments outside Markdown examples."""
+    live: list[_LiveResultComment] = []
+    fence: tuple[str, int] | None = None
+    html_comment_depth = 0
+
+    for line_number, line in enumerate(_MARKDOWN_LINE_BREAK.split(markdown), 1):
+        if fence is not None:
+            fence_match = _FENCE_PATTERN.match(line)
+            if fence_match is not None:
+                marker = fence_match.group("marker")
+                if (
+                    marker[0] == fence[0]
+                    and len(marker) >= fence[1]
+                    and line[fence_match.end() :].strip() == ""
+                ):
+                    fence = None
+            continue
+
+        cursor = 0
+        if html_comment_depth:
+            cursor, html_comment_depth = _consume_html_comment(
+                line, cursor, html_comment_depth
+            )
+            if html_comment_depth:
+                continue
+
+        structural_line = line[cursor:]
+        if structural_line.startswith(("    ", "\t")):
+            continue
+        fence_match = _FENCE_PATTERN.match(structural_line)
+        if fence_match is not None:
+            marker = fence_match.group("marker")
+            if marker[0] != "`" or "`" not in structural_line[fence_match.end() :]:
+                fence = (marker[0], len(marker))
+                continue
+        if cursor == 0 and (
+            line == RESULT_COMPLETE_MARKER
+            or line.startswith(f"<!-- {_BINDING_SENTINEL}")
+        ):
+            live.append(_LiveResultComment(line_number, line))
+            continue
+        while True:
+            comment_start = line.find("<!--", cursor)
+            if comment_start == -1:
+                break
+            cursor, html_comment_depth = _consume_html_comment(
+                line, comment_start + 4, 1
+            )
+            if html_comment_depth:
+                break
+    return tuple(live)
 
 
 def parse_result_input_binding(line: str) -> ResultInputBinding | None:
@@ -74,12 +149,15 @@ def validate_result_analysis_completion(
         expected_normalized.add(normalized)
         expected[validated_name] = digest
 
-    lines = markdown.splitlines()
+    comments = _live_result_comments(markdown)
     bindings: list[ResultInputBinding] = []
-    for line in lines:
-        if not line.lstrip(" \t").startswith(f"<!-- {_BINDING_SENTINEL}"):
+    binding_lines: list[int] = []
+    marker_lines: list[int] = []
+    for comment in comments:
+        if comment.text == RESULT_COMPLETE_MARKER:
+            marker_lines.append(comment.line)
             continue
-        binding = parse_result_input_binding(line)
+        binding = parse_result_input_binding(comment.text)
         if binding is None:
             return ResultAnalysisValidation(
                 False,
@@ -88,6 +166,7 @@ def validate_result_analysis_completion(
                 tuple(bindings),
             )
         bindings.append(binding)
+        binding_lines.append(comment.line)
 
     normalized_bindings = [binding.name.casefold() for binding in bindings]
     if len(normalized_bindings) != len(set(normalized_bindings)):
@@ -98,7 +177,7 @@ def validate_result_analysis_completion(
             tuple(bindings),
         )
 
-    marker_count = lines.count(RESULT_COMPLETE_MARKER)
+    marker_count = len(marker_lines)
     if marker_count == 0:
         return ResultAnalysisValidation(
             False,
@@ -111,6 +190,13 @@ def validate_result_analysis_completion(
             False,
             "RESULT_MARKER_INVALID",
             "结果解读完成标记必须恰好出现一次。",
+            tuple(bindings),
+        )
+    if binding_lines and marker_lines[0] <= max(binding_lines):
+        return ResultAnalysisValidation(
+            False,
+            "RESULT_MARKER_ORDER_INVALID",
+            "结果解读完成标记必须位于所有当前结果绑定之后。",
             tuple(bindings),
         )
 

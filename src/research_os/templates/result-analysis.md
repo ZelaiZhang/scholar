@@ -22,9 +22,10 @@
 ## 完成绑定（仅在人工保守解读后填写）
 
 - 先运行 `research-os guide --project {{PROJECT_SLUG}} --workspace .`，确认 `artifacts/results-manifest.yaml` 与所有聚合结果通过校验。
-- 每个当前结果文件必须恰好写入一个隐藏绑定，格式为 `<!-- research-os:result-input name=<清单直接文件名>; sha256=<清单中的 64 位小写哈希> -->`。
+- 每个当前结果文件必须恰好写入一个顶层独立行隐藏绑定，格式为 `<!-- research-os:result-input name=<清单直接文件名>; sha256=<清单中的 64 位小写哈希> -->`。
+- 绑定和完成标记必须是无额外空白或文字的精确独立行；围栏、缩进代码块或普通 HTML 注释中的示例都不生效。
 - 绑定只可逐字复制清单中的 `path` 和 `sha256`；结果或清单变化后移除全部过期绑定并重新保守解读，不得猜测或编造哈希。
-- 所有质量门禁通过、人工解释保留且绑定集合与当前清单完全一致后，才另起一行写入 `<!-- research-os:stage=result-complete -->`。
+- 所有质量门禁通过、人工解释保留且绑定集合与当前清单完全一致后，才在所有绑定之后另起顶层独立行写入唯一一个 `<!-- research-os:stage=result-complete -->`。
 
 ## 医疗研究特别检查
 

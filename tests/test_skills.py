@@ -140,6 +140,11 @@ def test_result_interpreter_binds_completion_to_every_validated_manifest_digest(
     assert text.index("research-os:result-input") < text.index(
         "research-os:stage=result-complete"
     )
+    assert "顶层独立行" in text
+    assert "围栏代码块" in text
+    assert "缩进代码块" in text
+    assert "普通 HTML 注释" in text
+    assert "所有绑定之后" in text
 
 
 def test_research_cycle_skill_enforces_controller_and_human_boundaries() -> None:
@@ -154,3 +159,5 @@ def test_research_cycle_skill_enforces_controller_and_human_boundaries() -> None
     assert "不得运行训练" in text
     assert "selected" in text
     assert "research-os cycle" in text
+    assert "selected + 非 completed" in text
+    assert "拒绝继续且不写入" in text

@@ -15,6 +15,7 @@ from research_os.ideas import (
     IdeaRecord,
     IdeaScores,
     NoveltyEvidence,
+    approve_idea,
     load_idea_archive,
     save_idea_archive,
 )
@@ -223,9 +224,15 @@ def _shortlisted_idea() -> IdeaRecord:
     )
 
 
-def test_approve_idea_cli_is_human_only_and_records_decision(
-    tmp_path: Path, capsys
-) -> None:
+def _workspace_bytes(workspace: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in sorted(workspace.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _advance_cli_fixture_to_human_decision(tmp_path: Path) -> tuple[Path, str]:
     project = create_project(tmp_path, "A", "topic-a")
     link_project_sources(tmp_path, "topic-a", ["src-neighbour"])
     created = advance_cycle(tmp_path, "topic-a")
@@ -279,6 +286,13 @@ def test_approve_idea_cli_is_human_only_and_records_decision(
         encoding="utf-8",
     )
     assert advance_cycle(tmp_path, "topic-a").state == "awaiting_human_decision"
+    return project, created.run_id
+
+
+def test_approve_idea_cli_is_human_only_and_records_decision(
+    tmp_path: Path, capsys
+) -> None:
+    project, run_id = _advance_cli_fixture_to_human_decision(tmp_path)
     archive_path = project / "ideas" / "archive.yaml"
 
     exit_code = main(
@@ -304,9 +318,45 @@ def test_approve_idea_cli_is_human_only_and_records_decision(
     assert selected.researcher_decision is not None
     assert selected.researcher_decision.actor == "researcher"
     assert load_cycle_manifest(
-        project / "cycles" / created.run_id / "manifest.yaml"
+        project / "cycles" / run_id / "manifest.yaml"
     ).state == "completed"
     assert (project / "research-journal.jsonl").is_file()
+
+
+def test_cycle_cli_rejects_laundered_selection_without_mutating_workspace(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    project, run_id = _advance_cli_fixture_to_human_decision(tmp_path)
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(
+        archive_path,
+        allowed_source_ids={"src-neighbour"},
+    )
+    save_idea_archive(
+        archive_path,
+        approve_idea(archive, "idea-0001", reason="Interrupted approval"),
+    )
+    before = _workspace_bytes(tmp_path)
+
+    exit_code = main(
+        [
+            "cycle",
+            "--project",
+            "topic-a",
+            "--workspace",
+            str(tmp_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert captured.err == "错误: active cycle has a selected Idea before completion\n"
+    assert _workspace_bytes(tmp_path) == before
+    assert load_cycle_manifest(
+        project / "cycles" / run_id / "manifest.yaml"
+    ).state == "awaiting_human_decision"
 
 
 def test_approve_idea_cli_rejects_handcrafted_shortlist_without_active_review(

@@ -7,10 +7,12 @@ import research_os.cycle as cycle_module
 
 from research_os.cycle import (
     advance_cycle,
+    approve_active_cycle_idea,
     load_cycle_manifest,
     save_cycle_manifest,
     validate_cycle_artifacts,
 )
+from research_os.guidance import guide_project
 from research_os.ideas import (
     IdeaArchive,
     IdeaRecord,
@@ -105,6 +107,27 @@ def _project(tmp_path: Path) -> Path:
     project = create_project(tmp_path, "Topic A", "topic-a")
     link_project_sources(tmp_path, "topic-a", ["src-a"])
     return project
+
+
+def _workspace_bytes(workspace: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in sorted(workspace.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _advance_to_human_decision(workspace: Path, project: Path) -> str:
+    created = advance_cycle(workspace, project.name)
+    _write_candidates(project, created.run_id)
+    advance_cycle(workspace, project.name)
+    _write_candidates(project, created.run_id, checked=True)
+    advance_cycle(workspace, project.name)
+    _write_reviews(project, created.run_id)
+    advance_cycle(workspace, project.name)
+    _write_meta(project, created.run_id)
+    assert advance_cycle(workspace, project.name).state == "awaiting_human_decision"
+    return created.run_id
 
 
 def _external_project(tmp_path: Path) -> Path:
@@ -282,8 +305,12 @@ def test_cycle_reconciles_full_gate_order_and_requires_human_approval(
     archive = load_idea_archive(archive_path, allowed_source_ids={"src-a"})
     assert archive.ideas[0].status == "shortlisted"
 
-    selected = approve_idea(archive, "idea-0001", reason="Researcher approved")
-    save_idea_archive(archive_path, selected)
+    approve_active_cycle_idea(
+        tmp_path,
+        project.name,
+        "idea-0001",
+        reason="Researcher approved",
+    )
     completed = advance_cycle(tmp_path, "topic-a")
     assert completed.state == "completed"
     assert completed.next_action == "none"
@@ -327,6 +354,69 @@ def test_cycle_artifacts_reject_selected_idea_before_run_is_completed(
     )
 
     assert any("selected" in issue and "completed" in issue for issue in issues)
+
+
+@pytest.mark.parametrize("new_run", (False, True))
+def test_advance_cycle_rejects_selected_idea_before_completion_without_writes(
+    tmp_path: Path,
+    new_run: bool,
+) -> None:
+    project = _project(tmp_path)
+    run_id = _advance_to_human_decision(tmp_path, project)
+    archive_path = project / "ideas" / "archive.yaml"
+    archive = load_idea_archive(archive_path, allowed_source_ids={"src-a"})
+    save_idea_archive(
+        archive_path,
+        approve_idea(archive, "idea-0001", reason="Interrupted approval"),
+    )
+    before = _workspace_bytes(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="^active cycle has a selected Idea before completion$",
+    ):
+        advance_cycle(tmp_path, project.name, new_run=new_run)
+
+    assert _workspace_bytes(tmp_path) == before
+    manifest = load_cycle_manifest(project / "cycles" / run_id / "manifest.yaml")
+    assert manifest.state == "awaiting_human_decision"
+    report = guide_project(tmp_path, project.name)
+    idea_stage = next(stage for stage in report.stages if stage.code == "idea_review")
+    assert idea_stage.progress == "blocked"
+
+
+def test_completed_cycle_remains_idempotent_after_atomic_approval(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    run_id = _advance_to_human_decision(tmp_path, project)
+    approve_active_cycle_idea(
+        tmp_path,
+        project.name,
+        "idea-0001",
+        reason="Researcher approved the reviewed Idea",
+    )
+    before = _workspace_bytes(tmp_path)
+
+    action = advance_cycle(tmp_path, project.name)
+
+    assert action.state == "completed"
+    assert action.run_id == run_id
+    assert action.next_action == "none"
+    assert _workspace_bytes(tmp_path) == before
+
+
+def test_awaiting_cycle_without_selection_remains_a_read_only_human_gate(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+    run_id = _advance_to_human_decision(tmp_path, project)
+    before = _workspace_bytes(tmp_path)
+
+    action = advance_cycle(tmp_path, project.name)
+
+    assert action.state == "awaiting_human_decision"
+    assert action.run_id == run_id
+    assert action.next_action == "approve_or_reject_idea"
+    assert _workspace_bytes(tmp_path) == before
 
 
 def test_invalid_candidate_artifact_blocks_without_import(tmp_path: Path) -> None:
@@ -514,10 +604,14 @@ def test_approved_idea_must_match_the_reviewed_candidate(tmp_path: Path) -> None
         reason="Researcher approved a changed version",
     )
     save_idea_archive(archive_path, selected)
+    before = _workspace_bytes(tmp_path)
 
-    blocked = advance_cycle(tmp_path, "topic-a")
-    assert blocked.state == "blocked"
-    assert blocked.next_action == "restore_reviewed_idea"
+    with pytest.raises(
+        ValueError,
+        match="^active cycle has a selected Idea before completion$",
+    ):
+        advance_cycle(tmp_path, "topic-a")
+    assert _workspace_bytes(tmp_path) == before
 
 
 def test_provider_candidate_call_is_authorized_counted_and_validated(

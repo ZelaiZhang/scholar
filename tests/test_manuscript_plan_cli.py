@@ -139,6 +139,63 @@ def test_manuscript_plan_broken_evidence_returns_two(tmp_path: Path, capsys) -> 
     assert capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "analysis_body",
+    (
+        "```markdown\n{binding}\n{marker}\n```",
+        "<!-- archived example\n{binding}\n{marker}\n-->",
+        "<!-- first --><!-- archived example\n{binding}\n{marker}\n-->",
+        "    {binding}\n    {marker}",
+        "{marker}\n{binding}",
+        "{binding}\n{marker}\n{marker}",
+    ),
+)
+def test_manuscript_plan_keeps_results_partial_for_non_live_or_invalid_completion(
+    tmp_path: Path,
+    analysis_body: str,
+) -> None:
+    project = _write_fixture(tmp_path)
+    (project / "05-experiment-design.md").write_text(
+        "# Experiment design\n\nReviewed design.\n\n"
+        "<!-- research-os:stage=design-complete -->\n",
+        encoding="utf-8",
+    )
+    result = project / "artifacts" / "aggregate-results.csv"
+    result.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    digest = hashlib.sha256(result.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    binding = (
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={digest} -->"
+    )
+    (project / "06-result-analysis.md").write_text(
+        "# Result analysis\n\nHuman interpretation.\n\n"
+        + analysis_body.format(
+            binding=binding,
+            marker="<!-- research-os:stage=result-complete -->",
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan = build_manuscript_plan(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 13),
+    )
+    results = next(section for section in plan.sections if section.code == "results")
+
+    assert results.status == "partial"
+    assert "RESULT_INTERPRETATION_INCOMPLETE" in results.reason_codes
+
+
 def test_manuscript_plan_rejects_stage_document_changed_after_guide(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -33,6 +33,9 @@ def test_create_project_instantiates_all_research_artifacts(tmp_path: Path) -> N
     assert "research-os:result-input" in result_template
     assert "每个当前结果文件" in result_template
     assert "research-os:stage=result-complete" in result_template
+    assert "顶层独立行" in result_template
+    assert "围栏、缩进代码块或普通 HTML 注释" in result_template
+    assert "所有绑定之后" in result_template
 
 
 def test_create_project_installs_parseable_manuscript_outline(

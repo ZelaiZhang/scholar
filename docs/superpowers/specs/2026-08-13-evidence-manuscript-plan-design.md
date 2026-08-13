@@ -100,7 +100,7 @@ research-os manuscript-plan `
 
 状态为 `ready`、`partial` 或 `blocked`。每节输出稳定的 `reason_codes`、人工可读原因、可用 claim IDs 和依赖产物路径。没有逐章 claim 标签时，系统不猜某条事实属于哪个章节；只提供候选证据包和门禁结果。
 
-“结果解读完成”不是单独查找 `result-complete` 字符串：`06-result-analysis.md` 还必须为当前已校验 manifest 的每个直接结果文件恰好绑定一次文件名与 SHA256。结果或 provenance 集合变化会退回进行中；同名同哈希的离线文件身份替换不单独推翻科学解释。
+“结果解读完成”不是单独查找 `result-complete` 字符串：`06-result-analysis.md` 还必须为当前已校验 manifest 的每个直接结果文件恰好绑定一次文件名与 SHA256。绑定和唯一完成标记只在围栏代码、缩进代码和普通 HTML 注释之外的顶层精确独立行生效，且完成标记必须位于所有绑定之后。结果或 provenance 集合变化会退回进行中；同名同哈希的离线文件身份替换不单独推翻科学解释。
 
 “人工已选 Idea”同时要求 active cycle 的状态为 `completed`。中断或降级到其他状态时，即使 archive 暂时保留 selected 记录，也不得投影为 Methods 就绪。
 

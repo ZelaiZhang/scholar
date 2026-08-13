@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前发布版本为 `v0.8.0`；最终 adversarial review 指出的六项 Important 问题已在本工作树修复并重新验证。修复后独立 re-review 仍为 pending，本文不将当前状态记为 APPROVE。已经完成：
+当前发布版本为 `v0.8.0`；最终 adversarial review 指出的六项 Important 问题以及随后 re-review 指出的两项 Important 问题已在本工作树修复。最新修复仍待独立 re-review，本文不将当前状态记为 APPROVE。已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -45,7 +45,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 21. 只读 `manuscript-audit`：检查八章节 Markdown 草稿的块级隐藏 annotation、账本 provenance、选定 Idea 和已登记聚合结果；不判断语义蕴含或科学正确性。
 
-截至本次修复集成的源码验证，完整测试为 `537 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果记录在下方“发布记录”；修复后独立 re-review 尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+截至本次修复集成的源码验证，完整测试为 `580 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）。wheel 文件名、SHA256、隔离安装模块路径和用户旅程结果记录在下方“发布记录”；最新修复后独立 re-review 尚未完成。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
 
 ## 3. 系统总览
 
@@ -383,12 +383,12 @@ git diff --check
 
 ### v0.8 发布记录
 
-- 源码测试：`537 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；唯一 skip 为当前平台不允许替换已打开的只读文件。`compileall src tests`、`pip check`、`doctor`、`kb doctor`、两个写作/解读技能的 `quick_validate` 和 `git diff --check` 均退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
+- 源码测试：`580 passed, 1 skipped`（`-p no:cacheprovider -W error -q`）；唯一 skip 为当前平台不允许替换已打开的只读文件。`compileall src tests`、`pip check`、`doctor`、`kb doctor`、两个写作/解读技能的 `quick_validate` 和 `git diff --check` 均退出 `0`。根工作区 `doctor` 的“尚未创建课题”是预期 WARN。
 - wheel 文件：`research_os-0.8.0-py3-none-any.whl`（临时构建目录，不写入源码 `dist/`）。
-- wheel SHA256：`EC1AD71515886176A19941FE9D58951A94627DB50EEB53081FE4E440C24A4E70`。
-- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-rereview-final-02a5b9c03f744ac798fa8283dc91fe26\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
-- 安装后用户旅程：通过；从工作区根目录执行 README/技能记录的精确 `--draft projects/wheel-topic/writing/installed-draft.md --workspace .` 形式。旅程覆盖八节审计通过与确定性/不泄漏/不写入检查；然后顺序协调修改结果文件和 manifest 哈希，确认旧解读绑定使审计退出 `1` 且报告 `SECTION_PARTIAL`，更新绑定后才恢复通过；最后仍验证 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
-- 修复后独立 re-review 仍为 pending；本节不将该状态标记为 APPROVE。
+- wheel SHA256：`9CCECD27FEF812951D4814D5EA8471E35A64233DFEE8BC7FC1D3E7E633D18C7E`。
+- 隔离模块路径与版本：`C:\Users\zzt\AppData\Local\Temp\research-os-v08-rereview-771d6ab4b66f4d009503a8c81517f3ba\target\research_os\__init__.py`，模块与 metadata 版本均为 `0.8.0`；在源码目录之外以 `-P` 运行，`PYTHONPATH` 仅指向临时 target。
+- 安装后用户旅程：通过；从工作区根目录执行 README/技能记录的精确 `--draft projects/wheel-topic/writing/installed-draft.md --workspace .` 形式。旅程先确认围栏代码中的结果绑定与完成标记不能推进 Results，再以顶层精确独立行恢复；随后覆盖八节审计通过与确定性/不泄漏/不写入检查，并顺序协调修改结果文件和 manifest 哈希，确认旧解读绑定使审计退出 `1` 且报告 `SECTION_PARTIAL`，更新绑定后才恢复通过；最后仍验证 `CLAIM_KIND_MISMATCH` 且不回显草稿正文。
+- 最新两项修复后独立 re-review 仍为 pending；本节不将该状态标记为 APPROVE。
 
 测试目录按领域拆分：CLI、课题、来源、证据、PDF、指导、Idea、评审、循环、上下文、provider、doctor、技能与工作区。修复缺陷时先添加能稳定复现问题的测试，再改实现。
 
@@ -552,6 +552,8 @@ v0.4 的 Research Methods Knowledge Base 不是简单堆 PDF，当前包含：
 7. 固定 `--as-of` 且输入字节不变时 Markdown/JSON 完全确定，命令执行前后工作区字节不变。
 8. `artifacts/results-manifest.yaml` 是结果输入的唯一登记边界；条目必须给出直接子文件、支持的文本格式、SHA256、`source_repository` 和 `generated_at`。任意 README/日志/未登记文件不得推进 Results，清单、结果或阶段文档在快照期间变化会失败关闭。
 9. `06-result-analysis.md` 的 `result-complete` 必须与当前已校验结果集合逐文件绑定；缺失、重复、未知、额外、格式错误或哈希过期的绑定都会把结果解读退回进行中，并阻断 Results 与审计通过。
+10. 结果绑定与唯一完成标记只有在围栏/缩进代码和普通 HTML 注释之外的顶层精确独立行才生效，且完成标记必须位于全部当前绑定之后；文档示例、前置标记和重复标记均失败关闭。
+11. `cycle` 在任何写入前拒绝当前 run 的 `selected + 非 completed` 非法组合，不再从 archive 推断完成；合法选择只能由 `approve-idea` 原子提交，已完成 run 仍可只读幂等查询。
 
 命令：
 

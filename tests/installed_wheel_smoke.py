@@ -460,6 +460,29 @@ def main_smoke(workspace: Path, repository: Path) -> None:
         "--workspace",
         ".",
     ]
+    result_analysis.write_text(
+        "# Result analysis\n\nHuman interpretation with a non-live example.\n\n"
+        "```markdown\n"
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={result_sha256} -->\n"
+        "<!-- research-os:stage=result-complete -->\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    with contextlib.chdir(workspace):
+        code, fenced_audit = run_cli(audit_args)
+    assert code == 1, fenced_audit
+    assert any(
+        issue["code"] == "SECTION_PARTIAL"
+        for issue in json.loads(fenced_audit)["issues"]
+    )
+    result_analysis.write_text(
+        "# Result analysis\n\nConservative aggregate interpretation.\n\n"
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={result_sha256} -->\n"
+        "<!-- research-os:stage=result-complete -->\n",
+        encoding="utf-8",
+    )
     audit_before = workspace_bytes(workspace)
     with contextlib.chdir(workspace):
         code, first_audit = run_cli(audit_args)

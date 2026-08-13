@@ -125,7 +125,7 @@ The annotation must name one Idea that is selected in the active completed resea
 
 ### 6.5 Result blocks
 
-Every named artifact must be a direct file registered by `artifacts/results-manifest.yaml`. Its hash, source repository, generation time, file identity, and manifest identity must pass the existing stable result-input validation. The Results section must be `ready`, which requires aggregate result input and completed conservative interpretation. Completion additionally requires exactly one strict hidden `name + sha256` binding for every current manifest artifact in `06-result-analysis.md`; missing, malformed, duplicate, unknown, extra or stale bindings invalidate the interpretation marker.
+Every named artifact must be a direct file registered by `artifacts/results-manifest.yaml`. Its hash, source repository, generation time, file identity, and manifest identity must pass the existing stable result-input validation. The Results section must be `ready`, which requires aggregate result input and completed conservative interpretation. Completion additionally requires exactly one strict hidden `name + sha256` binding for every current manifest artifact in `06-result-analysis.md`; missing, malformed, duplicate, unknown, extra or stale bindings invalidate the interpretation marker. Bindings and the unique completion marker are live only as exact standalone top-level HTML-comment lines outside fenced code, indented code, and enclosing ordinary HTML comments. The marker must follow every live binding; examples and earlier or duplicate markers cannot complete the stage.
 
 An annotation proves provenance, not statistical correctness or clinical utility.
 

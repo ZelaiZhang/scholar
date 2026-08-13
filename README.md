@@ -299,6 +299,8 @@ results:
 <!-- research-os:stage=result-complete -->
 ```
 
+上面的围栏仅展示语法。写入真实 `06-result-analysis.md` 时，每个绑定和唯一完成标记都必须是无额外空白或文字的顶层独立精确行，不能位于围栏代码块、缩进代码块或普通 HTML 注释中；完成标记必须在所有当前绑定之后。围栏或注释中的示例不会推进状态。
+
 完成标记本身不再足够。结果字节或当前 provenance 集合变化后，`guide` 会把结果解读退回“进行中”，`manuscript-plan` 的 Results 不会 ready，`manuscript-audit` 也不能通过；重新人工解释并更新全部绑定后才恢复。若只是同一文件名的同内容身份替换且 SHA256 未变，科学解释不必仅因文件 identity 改变而作废，但一次正在运行的只读快照仍会对任何中途替换失败关闭。
 
 ## 证据账本
@@ -499,6 +501,7 @@ git diff --check
 - provider 产物使用 `create-only commit`：调用等待期间若研究者写入候选、评审或 meta-review，系统拒绝覆盖人工文件。
 - 外发前逐条校验证据账本的 claim/source_id；上下文变化时保留原 `context.md`，新快照写入 `context-<sha256前16位>.md`。
 - `approve-idea` 会原子完成 run；批准成功后直接运行 `guide`，下一步进入 `$experiment-advisor`，无需再补一次 `cycle`。
+- `cycle` 不会根据 archive 中手工或中断留下的 `selected` 推断完成；当前 run 若出现 `selected + 非 completed`，命令以固定错误拒绝且不写入。只有 `approve-idea` 原子路径能建立合法的 `selected + completed`。
 - `doctor` 校验 run 状态、冻结产物哈希、三路评审、人工 selected Idea，以及 journal 中引用的 run 和产物是否真实存在。
 - `kb doctor` 校验 catalog schema、来源登记、阅读范围、全文 locator、替代关系、陈旧复核、知识资产引用和路径安全。
 - `kb search` 使用可解释固定权重，不依赖联网、embedding、随机数或当前时间；`kb recommend` 永不自动关联项目来源。

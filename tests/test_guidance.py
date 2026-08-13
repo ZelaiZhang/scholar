@@ -360,6 +360,54 @@ def test_result_marker_without_current_binding_stays_in_progress(tmp_path: Path)
     assert report.next_action.skill == "result-interpreter"
 
 
+@pytest.mark.parametrize(
+    "analysis_body",
+    (
+        "```markdown\n{binding}\n{marker}\n```",
+        "<!-- archived example\n{binding}\n{marker}\n-->",
+        "<!-- first --><!-- archived example\n{binding}\n{marker}\n-->",
+        "    {binding}\n    {marker}",
+        "{marker}\n{binding}",
+        "{binding}\n{marker}\n{marker}",
+    ),
+)
+def test_guide_does_not_complete_results_from_non_live_or_misordered_markers(
+    tmp_path: Path,
+    analysis_body: str,
+) -> None:
+    project = create_progressed_project_through_design(tmp_path)
+    result = project / "artifacts" / "aggregate-results.csv"
+    result.write_text("metric,value\naccuracy,0.8\n", encoding="utf-8")
+    digest = hashlib.sha256(result.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: aggregate-results.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-experiment-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    binding = (
+        "<!-- research-os:result-input name=aggregate-results.csv; "
+        f"sha256={digest} -->"
+    )
+    (project / "06-result-analysis.md").write_text(
+        "# Result analysis\n\nHuman conservative interpretation.\n\n"
+        + analysis_body.format(
+            binding=binding,
+            marker="<!-- research-os:stage=result-complete -->",
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = guide_project(tmp_path, project.name)
+    stage = next(item for item in report.stages if item.code == "result_interpretation")
+
+    assert stage.progress == "in_progress"
+    assert report.next_action.skill == "result-interpreter"
+
+
 def test_unmanifested_or_documentation_artifacts_are_not_result_inputs(
     tmp_path: Path,
 ) -> None:

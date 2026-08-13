@@ -40,6 +40,9 @@ from research_os.cycle_context import ExternalContextSnapshot, build_external_co
 
 DEFAULT_MAX_IDEAS = 4
 DEFAULT_MAX_CALLS = 6
+_SELECTED_BEFORE_COMPLETION_ERROR = (
+    "active cycle has a selected Idea before completion"
+)
 MAX_ARTIFACT_BYTES = 1024 * 1024
 RUN_ID_PATTERN = re.compile(r"^run-[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}$")
 RUN_STATES = {
@@ -1185,6 +1188,28 @@ def _ensure_archive(project: Path, slug: str, source_ids: set[str]) -> Path:
     return archive_path
 
 
+def _reject_laundered_active_selection(
+    project: Path,
+    *,
+    source_ids: set[str],
+) -> None:
+    """Reject a selected active-run Idea unless atomic approval completed the run."""
+    if not (project / "cycles").is_dir():
+        return
+    _run_dir, manifest = _active_run(project)
+    if manifest.state == "completed":
+        return
+    archive_path = project / "ideas" / "archive.yaml"
+    if not archive_path.is_file():
+        return
+    archive = load_idea_archive(archive_path, allowed_source_ids=source_ids)
+    if any(
+        idea.generated_by_run == manifest.run_id and idea.status == "selected"
+        for idea in archive.ideas
+    ):
+        raise ValueError(_SELECTED_BEFORE_COMPLETION_ERROR)
+
+
 def _load_candidates(
     path: Path,
     *,
@@ -1582,6 +1607,7 @@ def advance_cycle(
     elif (project / "cycles").exists():
         raise ValueError("research journal is missing; cycle resume is blocked")
     source_ids = set(project_manifest.source_ids)
+    _reject_laundered_active_selection(project, source_ids=source_ids)
     archive_path = _ensure_archive(project, slug, source_ids)
     cycles_path = project / "cycles"
     if new_run or not cycles_path.exists():
@@ -2156,8 +2182,8 @@ def advance_cycle(
             for idea in archive.ideas
             if idea.generated_by_run == manifest.run_id and idea.status == "selected"
         ]
-        if manifest.state == "awaiting_human_decision" and selected:
-            manifest = _transition(project, run_dir, manifest, "completed")
+        if manifest.state != "completed" and selected:
+            raise ValueError(_SELECTED_BEFORE_COMPLETION_ERROR)
 
     if manifest.state == "completed":
         return _action(

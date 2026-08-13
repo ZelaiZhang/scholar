@@ -26,6 +26,7 @@ description: Use when advancing an active Research OS cycle, a cycle work packet
 - 禁止编造来源、定位、检索结果、评审或完成状态。摘要证据必须标明范围，事实、推断、假设分开。
 - 不得运行训练、微调、量化、强化学习、评测脚本或任何实验命令；即使仓库已有脚本也不执行。
 - 人工门禁不可推断、代签或因“用户不想确认”而跳过。只有研究者显式执行 `approve-idea` 才能选择 Idea。
+- 若当前 run 的 archive 出现 `selected`、但 manifest 尚非 `completed`（`selected + 非 completed`），这是中断或篡改状态；`research-os cycle` 必须拒绝继续且不写入。只有 `approve-idea` 的原子事务可以同时建立 `selected + completed`。
 - 不批量预做后续阶段，不改旧版 `04-idea-candidates.md` 代替结构化产物，不用一次 meta-review 代替三份独立评审。
 
 ## 常见压力

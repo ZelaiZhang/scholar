@@ -242,6 +242,7 @@ Meta-review 只汇总共识、冲突、阻塞问题和 shortlist 建议，不产
 - 同一 run 重复执行不会重复生成候选或重复计费。
 - 每个候选均有可追踪证据、新颖性状态、独立评审和淘汰/保留理由。
 - 模型不能把任何 Idea 改成 `selected`；只有显式 `approve-idea` 可以。
+- `cycle` 不得从 archive 中的 `selected` 推断 run 已完成；当前 run 出现 `selected + 非 completed` 时，必须在任何写入或新 run 创建前以固定安全错误拒绝。只有 `approve-idea` 原子路径可以同时提交 `selected + completed`。
 - 研究日志能验证完整哈希链，损坏时 doctor 明确失败。
 - 实验设计之后仍等待独立实验仓库，不执行实验。
 - 所有 v0.2 命令和旧课题继续工作。

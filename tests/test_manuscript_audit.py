@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from datetime import date
 import hashlib
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from research_os.manuscript_plan import (
     ManuscriptAction,
     ManuscriptPlan,
     SectionReadiness,
+    build_manuscript_plan,
     manuscript_plan_from_brief,
 )
 from research_os.meeting_brief import (
@@ -32,6 +34,7 @@ from research_os.result_inputs import (
     load_result_inputs,
 )
 from research_os.io import directory_identity
+from research_os.project import create_project
 
 
 PROJECT = ProjectStatus(
@@ -640,6 +643,74 @@ def test_audit_accepts_artifact_from_real_validated_result_snapshot(tmp_path: Pa
 
     assert audit.status == "pass"
     assert audit.used_result_artifacts == ("metrics.csv",)
+
+
+@pytest.mark.parametrize(
+    "analysis_body",
+    (
+        "```markdown\n{binding}\n{marker}\n```",
+        "<!-- archived example\n{binding}\n{marker}\n-->",
+        "<!-- first --><!-- archived example\n{binding}\n{marker}\n-->",
+        "    {binding}\n    {marker}",
+        "{marker}\n{binding}",
+        "{binding}\n{marker}\n{marker}",
+    ),
+)
+def test_audit_blocks_results_for_non_live_or_invalid_completion(
+    tmp_path: Path,
+    analysis_body: str,
+) -> None:
+    project = create_project(tmp_path, "Public project", "public-project")
+    (project / "05-experiment-design.md").write_text(
+        "# Experiment design\n\nReviewed design.\n\n"
+        "<!-- research-os:stage=design-complete -->\n",
+        encoding="utf-8",
+    )
+    result = project / "artifacts" / "metrics.csv"
+    result.write_text("metric,value\nscore,1\n", encoding="utf-8")
+    digest = hashlib.sha256(result.read_bytes()).hexdigest()
+    (project / "artifacts" / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: metrics.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    binding = (
+        "<!-- research-os:result-input name=metrics.csv; "
+        f"sha256={digest} -->"
+    )
+    (project / "06-result-analysis.md").write_text(
+        "# Result analysis\n\nHuman interpretation.\n\n"
+        + analysis_body.format(
+            binding=binding,
+            marker="<!-- research-os:stage=result-complete -->",
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = build_manuscript_plan(
+        tmp_path,
+        project.name,
+        as_of=date(2026, 8, 13),
+    )
+    snapshot = load_result_inputs(project, directory_identity(project))
+
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _valid_document(
+                (
+                    "Results",
+                    "<!-- research-os:kind=result; artifacts=metrics.csv -->\nFinding.",
+                )
+            )
+        ),
+        AuditContext(plan, (), snapshot),
+    )
+
+    assert "SECTION_PARTIAL" in _codes(audit)
+    assert next(section for section in plan.sections if section.code == "results").status == "partial"
 
 
 def test_many_method_and_partial_result_blocks_scale_linearly() -> None:
