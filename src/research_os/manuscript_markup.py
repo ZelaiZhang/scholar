@@ -151,11 +151,13 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
         in_block = False
 
     for line_number, raw_line in enumerate(markdown.splitlines(), start=1):
+        ordinary_comment_prefix_stripped = False
         if in_html_comment:
             comment_end = raw_line.find("-->")
             if comment_end == -1:
                 continue
             in_html_comment = False
+            ordinary_comment_prefix_stripped = True
             raw_line = raw_line[comment_end + 3 :]
             if not raw_line.strip():
                 continue
@@ -194,7 +196,7 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             close_block()
             continue
 
-        preceded_by_ordinary_comment = False
+        preceded_by_ordinary_comment = ordinary_comment_prefix_stripped
         while HTML_COMMENT_START.match(raw_line) is not None:
             is_research_annotation = raw_line.lstrip(" \t").startswith(
                 "<!-- research-os:"

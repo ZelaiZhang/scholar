@@ -474,3 +474,23 @@ def test_research_os_annotation_after_ordinary_same_line_comment_is_not_bound() 
 
     assert parsed.blocks == (ManuscriptBlock("Results", 1, 3, None),)
     assert parsed.syntax_issues == ()
+
+
+def test_research_os_comment_after_multiline_comment_close_is_not_bound() -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->\n"
+        "<!-- editorial note\n"
+        "end --><!-- research-os:kind=result; artifacts=table-2.csv -->\n"
+        "Reported result.\n"
+    )
+
+    assert parsed.blocks == (
+        ManuscriptBlock(
+            "Results",
+            1,
+            5,
+            ManuscriptAnnotation("result", (), "", ("table-1.csv",), 2),
+        ),
+    )
+    assert parsed.syntax_issues == ()
