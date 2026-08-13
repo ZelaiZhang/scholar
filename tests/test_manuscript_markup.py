@@ -494,3 +494,51 @@ def test_research_os_comment_after_multiline_comment_close_is_not_bound() -> Non
         ),
     )
     assert parsed.syntax_issues == ()
+
+
+def test_invalid_backtick_fence_opener_does_not_hide_audited_prose() -> None:
+    parsed = parse_manuscript(
+        "## Methods\n"
+        "```not`a-fence\n"
+        "Visible methods prose.\n"
+    )
+
+    assert parsed.blocks == (ManuscriptBlock("Methods", 1, 2, None),)
+    assert parsed.syntax_issues == ()
+
+
+@pytest.mark.parametrize("separator", ["\v", "\f", "\x85", "\u2028", "\u2029"])
+def test_unicode_line_separators_cannot_split_or_validate_annotations(
+    separator: str,
+) -> None:
+    parsed = parse_manuscript(
+        "## Results\n"
+        "<!-- research-os:kind=result; artifacts=table-1.csv -->"
+        f"{separator}Reported result."
+    )
+
+    assert parsed.blocks == ()
+    assert parsed.syntax_issues == (
+        MarkupIssue("INVALID_ANNOTATION", "Results", 1, 2),
+    )
+
+
+def test_block_indices_scale_and_continue_across_duplicate_section_occurrences() -> None:
+    block_count = 2048
+    first_occurrence = "\n\n".join(f"Block {index}." for index in range(block_count))
+    parsed = parse_manuscript(
+        "## Abstract\n"
+        f"{first_occurrence}\n\n"
+        "## Abstract\n"
+        "Final block.\n"
+    )
+
+    assert len(parsed.blocks) == block_count + 1
+    assert parsed.blocks[0] == ManuscriptBlock("Abstract", 1, 2, None)
+    assert parsed.blocks[-1] == ManuscriptBlock(
+        "Abstract", block_count + 1, 2 * block_count + 3, None
+    )
+    assert parsed.section_occurrences == (
+        ("Abstract", 1),
+        ("Abstract", 2 * block_count + 2),
+    )

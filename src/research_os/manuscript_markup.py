@@ -34,6 +34,7 @@ HORIZONTAL_RULE = re.compile(
     r"^ {0,3}(?P<marker>[*_-])(?:[ \t]*(?P=marker)){2,}[ \t]*$"
 )
 HTML_COMMENT_START = re.compile(r"^[ \t]*<!--")
+MARKDOWN_LINE_BREAK = re.compile(r"\r\n|\r|\n")
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ def _parse_values(value: str) -> tuple[str, ...] | None:
 def parse_manuscript(markdown: str) -> ParsedManuscript:
     """Parse audited Markdown structure while retaining no manuscript prose."""
     blocks: list[ManuscriptBlock] = []
+    block_counts: dict[str, int] = {}
     occurrences: list[tuple[str, int]] = []
     issues: list[MarkupIssue] = []
     section: str | None = None
@@ -131,7 +133,7 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
     def next_block_index() -> int:
         if section is None:
             return 0
-        return sum(block.section == section for block in blocks) + 1
+        return block_counts.get(section, 0) + 1
 
     def orphan_pending() -> None:
         nonlocal pending
@@ -150,7 +152,9 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
         nonlocal in_block
         in_block = False
 
-    for line_number, raw_line in enumerate(markdown.splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        MARKDOWN_LINE_BREAK.split(markdown), start=1
+    ):
         ordinary_comment_prefix_stripped = False
         if in_html_comment:
             comment_end = raw_line.find("-->")
@@ -163,6 +167,10 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
                 continue
 
         fence_match = FENCE.match(raw_line)
+        if fence_marker is None and fence_match is not None:
+            marker = fence_match.group("marker")
+            if marker[0] == "`" and "`" in raw_line[fence_match.end() :]:
+                fence_match = None
         if fence_marker is not None:
             if fence_match is not None:
                 marker = fence_match.group("marker")
@@ -254,6 +262,7 @@ def parse_manuscript(markdown: str) -> ParsedManuscript:
             blocks.append(
                 ManuscriptBlock(section, block_index, line_number, pending)
             )
+            block_counts[section] = block_index
             pending = None
             in_block = True
 
