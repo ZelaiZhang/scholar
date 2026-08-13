@@ -1,21 +1,37 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
+import hashlib
 from pathlib import Path
 
 import pytest
 
+import research_os.manuscript_audit as manuscript_audit
 from research_os.dashboard import ProjectStatus
+from research_os.evidence import ValidationIssue
+from research_os.guidance import StageView
 from research_os.manuscript_audit import AuditContext, audit_parsed_manuscript
 from research_os.manuscript_markup import parse_manuscript
 from research_os.manuscript_plan import (
     ManuscriptAction,
     ManuscriptPlan,
     SectionReadiness,
+    manuscript_plan_from_brief,
 )
-from research_os.meeting_brief import BriefClaim, EvidenceReference
-from research_os.meeting_brief import ExcludedClaim
-from research_os.result_inputs import ResultArtifact, ResultInputSnapshot
+from research_os.meeting_brief import (
+    BriefClaim,
+    BriefIdea,
+    BriefIdeaState,
+    EvidenceReference,
+    ExcludedClaim,
+    MeetingBrief,
+)
+from research_os.result_inputs import (
+    ResultArtifact,
+    ResultInputSnapshot,
+    load_result_inputs,
+)
+from research_os.io import directory_identity
 
 
 PROJECT = ProjectStatus(
@@ -110,6 +126,62 @@ def _codes(audit: object) -> list[str]:
     return [issue.code for issue in audit.issues]  # type: ignore[attr-defined]
 
 
+def _ready_but_blocked_plan() -> ManuscriptPlan:
+    idea = BriefIdea(
+        run_id="run-1",
+        idea_id="IDEA-1",
+        title="Bounded Idea",
+        scientific_question="A public research question.",
+        hypothesis="A bounded hypothesis.",
+        contribution="A bounded contribution.",
+        evidence_source_ids=("source-1",),
+        novelty_status="checked",
+        scores=(("novelty", 1),),
+        method_risks=("Risk.",),
+        medical_safety_risks=("No clinical decision support.",),
+        failure_criterion="A public criterion.",
+        external_experiment="A public external experiment.",
+        status="selected",
+        decision_reason="Approved by researcher.",
+    )
+    progress = tuple(
+        StageView(code, code, "complete", "complete", "complete")
+        for code in (
+            "problem_definition",
+            "evidence_synthesis",
+            "idea_review",
+            "experiment_design",
+            "result_interpretation",
+        )
+    )
+    brief = MeetingBrief(
+        schema_version=1,
+        as_of="2026-08-13",
+        project=PROJECT,
+        supported_claims=(_claim("FACT-1", "fact"),),
+        conflicted_claims=(),
+        open_claims=(),
+        excluded_claims=(
+            ExcludedClaim(
+                "EXCLUDED-1",
+                "Excluded routed statement.",
+                (ValidationIssue("invalid", "EXCLUDED-1", "Invalid."),),
+            ),
+        ),
+        idea_state=BriefIdeaState("run-1", "completed", False, ("IDEA-1",), True, True, True, True),
+        ideas=(idea,),
+        questions=(),
+        recommendations=(),
+        risks=(),
+        actions=(),
+        stages=progress,
+    )
+    plan = manuscript_plan_from_brief(brief)
+    assert all(section.status == "ready" for section in plan.sections)
+    assert plan.overall_status == "blocked"
+    return plan
+
+
 def test_audit_accepts_verified_fact_and_research_statement_annotations() -> None:
     parsed = parse_manuscript(
         "## Abstract\n"
@@ -135,6 +207,26 @@ def test_audit_accepts_verified_fact_and_research_statement_annotations() -> Non
     assert audit.status == "pass"
     assert audit.used_claim_ids == ("FACT-1", "HYPOTHESIS-1", "INFERENCE-1")
     assert "ANNOTATION_NOT_ENTAILMENT" in audit.boundaries
+
+
+def test_blocked_real_manuscript_plan_cannot_pass_even_when_sections_are_ready() -> None:
+    plan = _ready_but_blocked_plan()
+    context = AuditContext(
+        plan,
+        ("IDEA-1",),
+        ResultInputSnapshot((), "valid", None, None),
+    )
+    audit = audit_parsed_manuscript(
+        parse_manuscript(_valid_document()),
+        context,
+    )
+
+    plan_issues = [issue for issue in audit.issues if issue.code == "PLAN_BLOCKED"]
+    assert audit.status == "issues"
+    assert len(plan_issues) == 1
+    assert plan_issues[0].section == ""
+    assert plan_issues[0].block_index == 0
+    assert plan_issues[0].line == 0
 
 
 def test_fact_annotation_rejects_unknown_claim() -> None:
@@ -503,6 +595,71 @@ def test_result_annotation_requires_registered_artifact_and_results_readiness() 
     assert "missing.csv" not in unregistered.used_result_artifacts
 
 
+def test_audit_accepts_artifact_from_real_validated_result_snapshot(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "artifacts"
+    artifacts.mkdir(parents=True)
+    result = artifacts / "metrics.csv"
+    result.write_text("metric,value\nscore,1\n", encoding="utf-8")
+    digest = hashlib.sha256(result.read_bytes()).hexdigest()
+    (artifacts / "results-manifest.yaml").write_text(
+        "schema_version: 1\nresults:\n"
+        "  - path: metrics.csv\n"
+        f"    sha256: {digest}\n"
+        "    source_repository: public-repository\n"
+        "    generated_at: '2026-08-13T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    snapshot = load_result_inputs(project, directory_identity(project))
+
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _valid_document(
+                ("Results", "<!-- research-os:kind=result; artifacts=metrics.csv -->\nFinding.")
+            )
+        ),
+        AuditContext(_context().plan, (), snapshot),
+    )
+
+    assert audit.status == "pass"
+    assert audit.used_result_artifacts == ("metrics.csv",)
+
+
+def test_many_method_and_partial_result_blocks_scale_linearly() -> None:
+    assert not hasattr(manuscript_audit, "_has_block_issue")
+    artifact = ResultArtifact(
+        "registered.csv", Path("registered.csv"), "0" * 64, "public", "2026-08-13T00:00:00Z", (1, 1)
+    )
+
+    def audit_many(block_count: int) -> object:
+        method_blocks = "\n\n".join(
+            "<!-- research-os:kind=method; idea=IDEA-1 -->\nMethod."
+            for _ in range(block_count)
+        )
+        result_blocks = "\n\n".join(
+            "<!-- research-os:kind=result; artifacts=registered.csv -->\nFinding."
+            for _ in range(block_count)
+        )
+        return audit_parsed_manuscript(
+            parse_manuscript(
+                _valid_document(("Methods", method_blocks), ("Results", result_blocks))
+            ),
+            _context(
+                statuses={"methods": "partial", "results": "partial"},
+                selected_idea_ids=("IDEA-1",),
+                artifacts=(artifact,),
+            ),
+        )
+
+    small = audit_many(300)
+    large = audit_many(2400)
+
+    assert large.block_counts[-2:] == (("method", 2400), ("result", 2400))
+    assert _codes(large).count("SECTION_PARTIAL") == 4800
+    assert large.used_result_artifacts == ("registered.csv",)
+    assert small.status == "issues"
+
+
 def test_kind_restriction_and_unannotated_prose_are_reported_without_prose_leakage() -> None:
     audit = audit_parsed_manuscript(
         parse_manuscript(
@@ -517,6 +674,31 @@ def test_kind_restriction_and_unannotated_prose_are_reported_without_prose_leaka
     assert {"KIND_NOT_ALLOWED_IN_SECTION", "UNANNOTATED_BLOCK"} <= set(_codes(audit))
     assert "prose" not in {field.name for field in fields(audit.issues[0])}
     assert all("Sensitive manuscript prose." not in issue.message for issue in audit.issues)
+
+
+def test_non_citable_limitation_issue_message_is_kind_neutral() -> None:
+    context = _context()
+    context = replace(
+        context,
+        plan=replace(
+            context.plan,
+            citation_candidates=(replace(_claim("OPEN-LIMIT", "fact"), support=()),),
+        ),
+    )
+    audit = audit_parsed_manuscript(
+        parse_manuscript(
+            _document(
+                (
+                    "Limitations and Ethics",
+                    "<!-- research-os:kind=limitation; claims=OPEN-LIMIT -->\nLimit.",
+                )
+            )
+        ),
+        context,
+    )
+
+    issue = next(issue for issue in audit.issues if issue.code == "CLAIM_NOT_CITABLE")
+    assert "Fact annotation" not in issue.message
 
 
 def test_missing_and_duplicate_sections_and_parser_issues_are_carried_to_audit() -> None:

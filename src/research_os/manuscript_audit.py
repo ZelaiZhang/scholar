@@ -106,10 +106,14 @@ def audit_parsed_manuscript(
     plan = context.plan
     claim_index = _claim_index(plan)
     readiness = {item.title: item for item in plan.sections}
+    artifact_names = frozenset(artifact.name for artifact in context.result_inputs.artifacts)
     issues: list[ManuscriptAuditIssue] = []
     used_claim_ids: set[str] = set()
     used_artifacts: set[str] = set()
     valid_limitation = False
+
+    if plan.overall_status == "blocked":
+        issues.append(_issue("PLAN_BLOCKED", "", 0, 0))
 
     occurrence_counts: dict[str, int] = {}
     for section, line in parsed.section_occurrences:
@@ -141,10 +145,12 @@ def audit_parsed_manuscript(
         if block.section not in _ALLOWED_SECTIONS[annotation.kind]:
             issues.append(_issue("KIND_NOT_ALLOWED_IN_SECTION", block.section, block.block_index, block.line))
         section_readiness = readiness.get(block.section)
+        section_gate: str | None = None
         if section_readiness is not None and section_readiness.status != "ready":
+            section_gate = _section_gate_code(section_readiness.status)
             issues.append(
                 _issue(
-                    "SECTION_BLOCKED" if section_readiness.status == "blocked" else "SECTION_PARTIAL",
+                    section_gate,
                     block.section,
                     block.block_index,
                     block.line,
@@ -170,12 +176,9 @@ def audit_parsed_manuscript(
                 )
             methods_status = _readiness_status(plan, "Methods")
             methods_gate = _section_gate_code(methods_status)
-            if methods_status != "ready" and not _has_block_issue(
-                issues, methods_gate, block
-            ):
+            if methods_status != "ready" and section_gate != methods_gate:
                 issues.append(_issue(methods_gate, block.section, block.block_index, block.line))
         elif annotation.kind == "result":
-            artifact_names = {artifact.name for artifact in context.result_inputs.artifacts}
             for artifact_name in annotation.artifact_names:
                 if artifact_name not in artifact_names:
                     issues.append(
@@ -191,9 +194,7 @@ def audit_parsed_manuscript(
                     used_artifacts.add(artifact_name)
             results_status = _readiness_status(plan, "Results")
             results_gate = _section_gate_code(results_status)
-            if results_status != "ready" and not _has_block_issue(
-                issues, results_gate, block
-            ):
+            if results_status != "ready" and section_gate != results_gate:
                 issues.append(
                     _issue(
                         results_gate,
@@ -341,18 +342,6 @@ def _section_gate_code(status: str) -> str:
     return "SECTION_PARTIAL" if status == "partial" else "SECTION_BLOCKED"
 
 
-def _has_block_issue(
-    issues: list[ManuscriptAuditIssue], code: str, block: ManuscriptBlock
-) -> bool:
-    return any(
-        issue.code == code
-        and issue.section == block.section
-        and issue.block_index == block.block_index
-        and issue.line == block.line
-        for issue in issues
-    )
-
-
 def _section_audits(
     parsed: ParsedManuscript,
     plan: ManuscriptPlan,
@@ -386,7 +375,7 @@ def _issue(
     messages = {
         "UNKNOWN_CLAIM": "Annotation references an unknown routed claim.",
         "CLAIM_KIND_MISMATCH": "Annotation kind does not match the routed claim type.",
-        "CLAIM_NOT_CITABLE": "Fact annotation references a routed claim that is not citable.",
+        "CLAIM_NOT_CITABLE": "Annotation references a routed claim that is not citable.",
         "CLAIM_INVALID": "Annotation references an excluded routed claim.",
         "LIMITATION_MISSING": "At least one valid limitation annotation is required.",
         "IDEA_NOT_SELECTED": "Method annotation references an Idea not selected by the researcher.",
@@ -399,6 +388,7 @@ def _issue(
         "KIND_NOT_ALLOWED_IN_SECTION": "Annotation kind is not allowed in this section.",
         "SECTION_BLOCKED": "Annotated block is in a blocked manuscript section.",
         "SECTION_PARTIAL": "Annotated block is in a partial manuscript section.",
+        "PLAN_BLOCKED": "The routed manuscript plan is blocked.",
     }
     return ManuscriptAuditIssue(
         code, "error", section, block_index, line, claim_ids, artifact_names, messages[code]
