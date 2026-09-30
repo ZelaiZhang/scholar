@@ -4,6 +4,39 @@
 
 它提供科研指导和整理减负，不执行训练、微调、量化、强化学习或集群任务；也不处理真实病例、可识别病历或个体诊疗请求。
 
+## macOS / Linux 快速开始
+
+需要 Python 3.11 或更高版本。在仓库根目录运行：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+research-os doctor
+research-os kb doctor
+research-os guide
+```
+
+`guide` 会在没有课题时给出创建命令。创建后，日常只需重新激活环境并运行：
+
+```bash
+source .venv/bin/activate
+research-os guide --project your-topic
+```
+
+未激活环境时，可用 `.venv/bin/research-os` 替换 `research-os`。下文保留 Windows PowerShell 示例；Mac 上激活环境后，使用同名 `research-os` 命令、正斜杠路径和 Bash 的 `\` 续行符即可。完整操作见 [Mac 使用指南](docs/MACOS.md)。
+
+## v0.7.1 可靠性优化
+
+- 证据字段必须具有真实字符串类型；`null`、列表和对象不能被字符串化为“已核验”内容，格式错误会报告校验问题。
+- YAML 重复键被拒绝，避免后一个 `status` 或 provider 配置静默覆盖前一个值。
+- 稳定读取同时检查文件身份、大小和修改时间；来源登记表拒绝链接和重复 ID。
+- `model-call` 与命名 provider 共用 HTTPS、参数和输入检查；输出与 provenance 均以 create-only 方式发布，普通提交失败时回滚本次未被人工修改的文件。文件集合不承诺断电时整体原子性。
+- 论文就绪计划指向真实的文献综合文件，论文大纲目标位于 `writing/`。
+- 新增跨平台安装包验证脚本及 macOS、Windows、Linux 持续集成。
+
+本轮候选课题与预实验论文稿见 [criterion-memory 工作区](projects/criterion-memory/START-HERE.md)：包含定向文献证据、方法契约、实验协议和英文初稿；没有研究实验结果，最终选题与设计仍由研究者确认。
+
 ## 每天只记一个命令
 
 ```powershell

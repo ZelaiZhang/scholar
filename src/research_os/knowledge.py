@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from research_os.yaml_io import load_yaml
+
 from research_os.io import read_stable_direct_text
 from research_os.project import (
     _is_link_or_reparse_point,
@@ -299,7 +301,7 @@ def _load_yaml(
     if not path.is_file():
         raise FileNotFoundError(path)
     try:
-        raw = yaml.safe_load(
+        raw = load_yaml(
             read_stable_direct_text(
                 path,
                 expected_parent=expected_parent,
@@ -407,7 +409,7 @@ def _parse_front_matter(path: Path) -> tuple[dict[str, object], str]:
     if match is None:
         raise ValueError(f"知识卡缺少 YAML front matter: {path}")
     try:
-        raw = yaml.safe_load(match.group(1))
+        raw = load_yaml(match.group(1))
     except yaml.YAMLError as exc:
         raise ValueError(f"知识卡 front matter 损坏: {path}") from exc
     return _mapping(raw, f"知识卡 {path.name}"), match.group(2)

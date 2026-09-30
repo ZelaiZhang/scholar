@@ -11,9 +11,16 @@ from typing import Sequence
 from research_os.dashboard import ProjectDashboard, build_project_dashboard
 from research_os.doctor import render_doctor, run_doctor
 from research_os.cycle import advance_cycle, approve_active_cycle_idea
+from research_os.cycle_context import _assert_no_identifiable_medical_markers
 from research_os.evidence import load_ledger, render_validation_report, validate_ledger
 from research_os.guidance import guide_project, render_guide
-from research_os.io import atomic_write_bytes, atomic_write_text
+from research_os.io import (
+    atomic_create_text,
+    atomic_create_texts,
+    atomic_write_bytes,
+    atomic_write_text,
+    directory_identity,
+)
 from research_os.knowledge import (
     METHODS,
     PRIORITIES,
@@ -1038,7 +1045,8 @@ def _run(args: argparse.Namespace) -> int:
         if args.output.exists() and not args.force:
             raise FileExistsError(f"输出已存在，使用 --force 才能覆盖: {args.output}")
         result = extract_pdf(args.pdf)
-        atomic_write_text(args.output.resolve(), result.markdown)
+        writer = atomic_write_text if args.force else atomic_create_text
+        writer(args.output.resolve(), result.markdown)
         print(f"已提取 {len(result.pages)} 页: {args.output.resolve()}")
         return 0
     if args.command == "model-call":
@@ -1058,6 +1066,9 @@ def _run(args: argparse.Namespace) -> int:
             [args.system, args.user],
             args.source_id,
         )
+        _assert_no_identifiable_medical_markers(system_text + "\n" + user_text)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output_parent_identity = directory_identity(output.parent)
         provider = OpenAICompatibleProvider(
             args.base_url,
             args.model,
@@ -1070,10 +1081,14 @@ def _run(args: argparse.Namespace) -> int:
             user_text,
             external_api_allowed=args.allow_external_api,
         )
-        atomic_write_text(output, result.content)
-        atomic_write_text(
-            provenance_path,
-            json.dumps(result.provenance, ensure_ascii=False, indent=2) + "\n",
+        atomic_create_texts(
+            {
+                output: result.content,
+                provenance_path: json.dumps(
+                    result.provenance, ensure_ascii=False, indent=2
+                ) + "\n",
+            },
+            expected_parent_identity=output_parent_identity,
         )
         print(f"模型输出: {output}")
         print(f"调用记录: {provenance_path}")
@@ -1093,7 +1108,7 @@ def _run(args: argparse.Namespace) -> int:
                 raise ValueError("校验报告不能覆盖证据账本")
             if report_path.exists():
                 raise FileExistsError(f"校验报告已存在，不自动覆盖: {report_path}")
-            atomic_write_text(report_path, report)
+            atomic_create_text(report_path, report)
             print(f"校验报告: {report_path}")
         else:
             print(report, end="")

@@ -1,0 +1,27 @@
+schema_version: 1
+status: pending_researcher_review
+clinical_data_loaded: false
+experiments_executed: false
+source_candidates:
+  - name: PsyCoTalk
+    documentation_source_id: src-ed882eee046eb45b
+    role: fixed_dialogue_replay_candidate
+    license_status: not_confirmed
+    data_inspected: false
+    grouping_key_status: not_confirmed
+  - name: MentalBench
+    documentation_source_id: src-5be1d89747388719
+    role: external_static_evaluation_candidate
+    license_status: not_confirmed
+    data_inspected: false
+    grouping_key_status: not_confirmed
+researcher_resources:
+  scid_edition: unknown
+  tree_modules: unknown
+  deidentified_psychiatric_case_count: unknown
+  hardware: unknown
+  annotation_capacity: unknown
+approval:
+  final_topic: pending
+  data_use: pending
+  experimental_protocol: pending

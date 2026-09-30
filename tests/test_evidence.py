@@ -131,3 +131,36 @@ def test_conflicted_claim_requires_opposition_evidence() -> None:
     )
 
     assert any(issue.code == "missing_opposition" for issue in issues)
+
+
+@pytest.mark.parametrize("field", ["claim_id", "statement", "limitations"])
+@pytest.mark.parametrize("value", [None, False, 42, [], {}])
+def test_non_text_claim_fields_cannot_pass_verification(field, value) -> None:
+    issues = validate_ledger({"claims": [claim(**{field: value})]})
+    assert any(issue.code == f"missing_{field}" for issue in issues)
+
+
+@pytest.mark.parametrize("field", ["type", "status", "confidence"])
+@pytest.mark.parametrize("value", [[], {}, None])
+def test_malformed_enum_fields_report_issues_instead_of_crashing(field, value) -> None:
+    issues = validate_ledger({"claims": [claim(**{field: value})]})
+    assert any(issue.code == f"invalid_{field}" for issue in issues)
+
+
+@pytest.mark.parametrize("lane", ["support", "opposition"])
+@pytest.mark.parametrize("field", ["source_id", "locator"])
+@pytest.mark.parametrize("value", [None, False, 42, [], {}])
+def test_reference_fields_require_actual_text(lane, field, value) -> None:
+    reference = {"source_id": "src-1", "locator": "p. 3", field: value}
+    issues = validate_ledger({"claims": [claim(**{lane: [reference]})]})
+    assert any(issue.code == f"missing_{field}" for issue in issues)
+
+
+def test_duplicate_yaml_keys_cannot_silently_change_evidence_status(tmp_path) -> None:
+    path = tmp_path / "ledger.yaml"
+    path.write_text(
+        "claims:\n  - claim_id: C001\n    status: unverified\n    status: verified\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(LedgerFormatError, match="duplicate"):
+        load_ledger(path)

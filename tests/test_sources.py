@@ -45,6 +45,32 @@ def test_normalize_rejects_unknown_free_text() -> None:
         normalize_source("this is not a source")
 
 
+def test_registry_rejects_duplicate_ids_with_conflicting_authorization(tmp_path):
+    path = tmp_path / "sources.jsonl"
+    registry = SourceRegistry(path)
+    registry.add("doi:10.1000/permission")
+    original = path.read_text(encoding="utf-8")
+    duplicate = json.loads(original)
+    duplicate["external_api_allowed"] = True
+    path.write_text(original + json.dumps(duplicate) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="重复"):
+        authorize_external_sources(path, [duplicate["source_id"]])
+
+
+@pytest.mark.parametrize("dangling", [False, True])
+def test_registry_rejects_linked_registry_files(tmp_path, dangling):
+    target = tmp_path / "target.jsonl"
+    if not dangling:
+        target.write_text("", encoding="utf-8")
+    path = tmp_path / "sources.jsonl"
+    try:
+        path.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable: {exc}")
+    with pytest.raises(ValueError, match="链接"):
+        SourceRegistry(path).records()
+
+
 def test_registry_rejects_unsafe_source_id_from_serialized_data(
     tmp_path: Path,
 ) -> None:

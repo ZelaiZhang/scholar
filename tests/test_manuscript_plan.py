@@ -357,11 +357,18 @@ def test_ready_outline_has_one_fixed_evidence_bound_writing_action() -> None:
 
     assert plan.overall_status == "ready_for_outline"
     assert plan.next_action.code == "DRAFT_EVIDENCE_OUTLINE"
-    assert plan.next_action.target == "08-manuscript-draft.md"
+    assert plan.next_action.target == "writing/manuscript-outline.md"
     assert plan.next_action.command == (
         "$manuscript-assistant 基于 topic-a 的 manuscript-plan 和核验证据账本创建论文大纲，"
         "不补写缺失引用或结果"
     )
+
+
+def test_related_work_points_to_the_actual_project_synthesis_document() -> None:
+    plan = manuscript_plan_from_brief(_brief())
+    section = next(item for item in plan.sections if item.code == "related_work")
+    assert "03-literature-review.md" in section.artifact_paths
+    assert "01-literature-matrix.md" not in section.artifact_paths
 
 
 def test_outline_action_waits_until_every_upstream_section_gate_is_ready() -> None:

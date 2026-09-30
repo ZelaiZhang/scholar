@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import yaml
 
 from research_os.provider import OpenAICompatibleProvider, Transport
+from research_os.io import read_stable_direct_text
+from research_os.yaml_io import load_yaml
 
 
 MAX_CONFIG_BYTES = 1024 * 1024
@@ -20,7 +21,6 @@ ROLE_KEYS = {
     "timeout",
 }
 ROLE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-ENV_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
 
 
 @dataclass(frozen=True)
@@ -46,66 +46,23 @@ def _exact_keys(raw: dict[str, object], expected: set[str], *, context: str) -> 
         )
 
 
-def _string(raw: object, *, field: str) -> str:
-    if not isinstance(raw, str) or not raw.strip() or any(
-        ord(character) < 32 for character in raw
-    ):
-        raise ValueError(f"provider {field} must be a non-empty plain string")
-    return raw.strip()
-
-
-def _number(
-    raw: object, *, field: str, minimum: float, maximum: float
-) -> float:
-    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-        raise ValueError(f"provider {field} must be numeric")
-    value = float(raw)
-    if not minimum <= value <= maximum:
-        raise ValueError(
-            f"provider {field} must be between {minimum:g} and {maximum:g}"
-        )
-    return value
-
-
-def _base_url(raw: object) -> str:
-    value = _string(raw, field="base_url").rstrip("/")
-    parsed = urlsplit(value)
-    if (
-        not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise ValueError("provider base_url is invalid")
-    is_local_http = parsed.scheme == "http" and parsed.hostname in {
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }
-    if parsed.scheme != "https" and not is_local_http:
-        raise ValueError("provider base_url must use HTTPS (HTTP is local-only)")
-    return value
-
-
 def _parse_role(raw: object, *, role: str) -> ProviderRoleConfig:
     if not isinstance(raw, dict):
         raise ValueError(f"provider role {role} must be an object")
     _exact_keys(raw, ROLE_KEYS, context=f"provider role {role}")
-    api_key_env = _string(raw["api_key_env"], field="api_key_env")
-    if not ENV_PATTERN.fullmatch(api_key_env):
-        raise ValueError("provider api_key_env must be an uppercase environment name")
-    model = _string(raw["model"], field="model")
-    if len(model) > 200:
-        raise ValueError("provider model is too long")
+    provider = OpenAICompatibleProvider(
+        base_url=raw["base_url"],
+        model=raw["model"],
+        api_key_env=raw["api_key_env"],
+        temperature=raw["temperature"],
+        timeout=raw["timeout"],
+    )
     return ProviderRoleConfig(
-        base_url=_base_url(raw["base_url"]),
-        model=model,
-        api_key_env=api_key_env,
-        temperature=_number(
-            raw["temperature"], field="temperature", minimum=0, maximum=2
-        ),
-        timeout=_number(raw["timeout"], field="timeout", minimum=1, maximum=300),
+        base_url=provider.base_url,
+        model=provider.model,
+        api_key_env=provider.api_key_env,
+        temperature=provider.temperature,
+        timeout=provider.timeout,
     )
 
 
@@ -113,10 +70,10 @@ def load_provider_config(path: Path) -> ProviderConfig:
     try:
         if path.stat().st_size > MAX_CONFIG_BYTES:
             raise ValueError("providers.yaml exceeds the 1 MiB limit")
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml(read_stable_direct_text(path, max_bytes=MAX_CONFIG_BYTES))
     except OSError as exc:
         raise ValueError(f"providers.yaml cannot be read: {path}") from exc
-    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+    except (UnicodeError, yaml.YAMLError) as exc:
         raise ValueError(f"providers.yaml is malformed: {path}") from exc
     if not isinstance(raw, dict):
         raise ValueError("providers.yaml must be an object")

@@ -1,0 +1,12 @@
+Captured user instructions and researcher notes for draft v0.1:
+
+User request: 你一直狠狠去优化我的这个然后给我想一个题目并给我设计一个题目，并给我设计好实验，并开始书写我的论文
+Publishing instruction: 这个版本更新后传到远端你新建一个mac分支传到远端去
+Researcher-reported resources, not independently verified:
+- Mixed medical text datasets including insurance and medical records.
+- Prior tree-guided simulated diagnostic experiments.
+- Tree knowledge was converted from a scanned SCID-5 book; exact edition and coverage unknown.
+- Interest in reinforcement learning for context management.
+
+Drafting scope: candidate topic, public evidence, prospective method and experimental protocol, editable manuscript; no fabricated results or final scientific approval.
+This capture is the hashed task specification, not the complete model generation context.

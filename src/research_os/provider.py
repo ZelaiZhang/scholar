@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 
 class MissingAPIKey(RuntimeError):
@@ -24,6 +26,48 @@ class InvalidProviderResponse(RuntimeError):
 
 Transport = Callable[[str, dict[str, str], dict[str, object], float], dict[str, object]]
 MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024
+ENV_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def _string(raw: object, *, field: str) -> str:
+    if not isinstance(raw, str) or not raw.strip() or any(
+        ord(character) < 32 for character in raw
+    ):
+        raise ValueError(f"provider {field} must be a non-empty plain string")
+    return raw.strip()
+
+
+def _number(raw: object, *, field: str, minimum: float, maximum: float) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValueError(f"provider {field} must be numeric")
+    value = float(raw)
+    if not minimum <= value <= maximum:
+        raise ValueError(
+            f"provider {field} must be between {minimum:g} and {maximum:g}"
+        )
+    return value
+
+
+def _base_url(raw: object) -> str:
+    value = _string(raw, field="base_url").rstrip("/")
+    try:
+        parsed = urlsplit(value)
+        # Accessing .port validates nonnumeric and out-of-range ports.
+        parsed.port
+        valid = bool(parsed.hostname) and not (
+            parsed.username is not None or parsed.password is not None
+            or parsed.query or parsed.fragment
+        )
+    except ValueError as exc:
+        raise ValueError("provider base_url is invalid") from exc
+    if not valid:
+        raise ValueError("provider base_url is invalid")
+    is_local_http = parsed.scheme == "http" and parsed.hostname in {
+        "localhost", "127.0.0.1", "::1",
+    }
+    if parsed.scheme != "https" and not is_local_http:
+        raise ValueError("provider base_url must use HTTPS (HTTP is local-only)")
+    return value
 
 
 @dataclass(frozen=True)
@@ -85,15 +129,17 @@ class OpenAICompatibleProvider:
         timeout: float = 60.0,
         transport: Transport | None = None,
     ):
-        if not base_url.startswith(("https://", "http://")):
-            raise ValueError("base_url 必须是 HTTP(S) URL")
-        if not model.strip() or not api_key_env.strip():
-            raise ValueError("model 和 api_key_env 不能为空")
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.api_key_env = api_key_env
-        self.temperature = temperature
-        self.timeout = timeout
+        self.base_url = _base_url(base_url)
+        self.model = _string(model, field="model")
+        if len(self.model) > 200:
+            raise ValueError("provider model is too long")
+        self.api_key_env = _string(api_key_env, field="api_key_env")
+        if not ENV_PATTERN.fullmatch(self.api_key_env):
+            raise ValueError("provider api_key_env must be an uppercase environment name")
+        self.temperature = _number(
+            temperature, field="temperature", minimum=0, maximum=2
+        )
+        self.timeout = _number(timeout, field="timeout", minimum=1, maximum=300)
         self.transport = transport or default_transport
 
     def complete(

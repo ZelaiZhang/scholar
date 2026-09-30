@@ -1,6 +1,6 @@
 # Research OS 开发交接与功能说明
 
-> 最后核对：2026-08-13；包版本：`0.7.0`；功能基线以本文档所在提交为准。
+> 最后核对：2026-09-30；包版本：`0.7.1`；功能基线以本文档所在提交为准。
 >
 > 本文把“已经实现”和“规划中”分开记录。除非明确标注为规划，否则下文功能均可在当前仓库中找到代码与测试。
 
@@ -21,7 +21,7 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 
 ## 2. 当前完成度
 
-当前稳定版本是 `v0.7.0`，已经完成：
+当前维护版本是 `v0.7.1`，已经完成：
 
 1. 科研课题工作区和标准模板；
 2. 文献来源登记、去重、课题关联和批量原子导入；
@@ -44,7 +44,9 @@ Research OS 是一个面向大模型方向研究生的本地、证据优先科�
 19. 确定性、只读的课题研究驾驶舱，聚合课题、证据、Idea、方法、风险和最多三个今日行动。
 20. 证据绑定的组会研究决策简报，逐条保留结论定位、冲突、限制、Idea 失败边界和人工理由。
 
-截至本文档更新，v0.7.0 完整测试为 `317 passed`（warnings-as-errors）；独立安装的 `research_os-0.7.0-py3-none-any.whl` 已完成全用户旅程，最终 SHA256 为 `40643DA030BEEA30A4885E229379F650DF0138C5DA7DCBB2ED8C06430804A75B`。后续代码提交仍必须重跑本文第 13 节的全部命令和 wheel 冒烟，不能沿用本次结果。
+2026-09-30 的本地 macOS/Python 3.12.14 回归为 `400 passed`（warnings-as-errors）；v0.7.1 wheel 从源码目录外的独立环境完成用户旅程。跨平台 CI 已配置，Linux/Windows 的远端运行结果另行核对。后续代码提交仍必须重跑本文第 13 节的命令和 wheel 冒烟，不能沿用本次结果。
+
+v0.7.1 重点修复证据字段类型、重复 YAML 键、读取中原位修改、来源表重复身份、单次 provider 参数与医疗输入检查、生成输出并发覆盖，以及论文规划中的失效路径。详情见 [维护复核](2026-09-30-maintenance-review.md)，Mac 操作见 [MACOS.md](MACOS.md)。
 
 ## 3. 系统总览
 
@@ -334,6 +336,21 @@ $env:DEEPSEEK_API_KEY="你的真实 Key"
 
 首次安装：
 
+macOS/Linux：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+python -m compileall -q src scripts
+python -m pytest -q -W error
+python -m pip check
+python scripts/verify_wheel.py
+git diff --check
+```
+
+Windows PowerShell：
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -350,6 +367,8 @@ git diff --check
 ```
 
 发布或修改打包配置时，还应从临时目录安装 wheel，并运行 `tests/installed_wheel_smoke.py` 覆盖源码目录之外的真实安装路径。构建示例：
+
+首选跨平台命令 `python scripts/verify_wheel.py`，它自动构建、安装、断开源码导入路径并运行完整用户旅程。单独构建示例：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist

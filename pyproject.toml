@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-os"
-version = "0.7.0"
+version = "0.7.1"
 description = "Evidence-first research guidance workspace for Codex"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "build>=1.2"]
 
 [project.scripts]
 research-os = "research_os.cli:entrypoint"

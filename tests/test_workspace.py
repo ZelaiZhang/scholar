@@ -63,7 +63,9 @@ def test_daily_driver_is_documented_and_packaged() -> None:
     assert "--as-of 2026-08-12" in readme
     assert "诊断准确性" in readme
     assert "$research-cycle" in readme
-    assert 'version = "0.7.0"' in pyproject
+    from research_os import __version__
+
+    assert f'version = "{__version__}"' in pyproject
 
 
 def test_package_version_matches_project_metadata() -> None:

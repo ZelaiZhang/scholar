@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -11,13 +12,19 @@ def _assert_parent_identity(
 ) -> None:
     if expected_parent_identity is None:
         return
-    metadata = path.parent.stat()
-    if (metadata.st_dev, metadata.st_ino) != expected_parent_identity:
+    if directory_identity(path.parent) != expected_parent_identity:
         raise OSError(f"写入目录在提交期间被替换: {path.parent}")
 
 
 def _identity(metadata: os.stat_result) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino
+
+
+def _file_version(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        metadata.st_dev, metadata.st_ino, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
 
 
 def _is_link_or_reparse(metadata: os.stat_result, path: Path) -> bool:
@@ -106,6 +113,8 @@ def read_stable_direct_text(
         raise ValueError(f"读取文件不能是符号链接或目录联接: {path}")
     if not stat.S_ISREG(before.st_mode):
         raise ValueError(f"读取目标必须是普通文件: {path}")
+    if max_bytes is not None and before.st_size > max_bytes:
+        raise ValueError(f"读取文件超过 {max_bytes} 字节限制: {path}")
 
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     if hasattr(os, "O_NOFOLLOW"):
@@ -113,8 +122,8 @@ def read_stable_direct_text(
     descriptor = os.open(path, flags)
     try:
         opened = os.fstat(descriptor)
-        if _identity(opened) != _identity(before):
-            raise OSError(f"读取文件在打开期间被替换: {path}")
+        if _file_version(opened) != _file_version(before):
+            raise OSError(f"读取文件在打开期间被修改或替换: {path}")
         chunks: list[bytes] = []
         size = 0
         while True:
@@ -125,13 +134,16 @@ def read_stable_direct_text(
             if max_bytes is not None and size > max_bytes:
                 raise ValueError(f"读取文件超过 {max_bytes} 字节限制: {path}")
             chunks.append(chunk)
+        finished = os.fstat(descriptor)
+        if _file_version(finished) != _file_version(opened):
+            raise OSError(f"读取文件在读取期间被修改或替换: {path}")
     finally:
         os.close(descriptor)
 
     after = path.lstat()
     parent_after = parent.stat()
-    if _is_link_or_reparse(after, path) or _identity(after) != _identity(before):
-        raise OSError(f"读取文件在读取期间被替换: {path}")
+    if _is_link_or_reparse(after, path) or _file_version(after) != _file_version(before):
+        raise OSError(f"读取文件在读取期间被修改或替换: {path}")
     if _identity(parent_after) != _identity(parent_before):
         raise OSError(f"读取目录在读取期间被替换: {parent}")
     try:
@@ -214,3 +226,62 @@ def atomic_create_text(
         ) from exc
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def atomic_create_texts(
+    contents: Mapping[Path, str],
+    *,
+    expected_parent_identity: tuple[int, int],
+) -> None:
+    """Publish create-only files; undo our untouched files on ordinary failure.
+
+    Each file is published atomically. The set is not crash-atomic. All targets
+    must share one parent; concurrent human creations and edits are preserved.
+    """
+    if not contents:
+        return
+    parents = {path.parent for path in contents}
+    if len(parents) != 1:
+        raise ValueError("create-only 文件必须位于同一目录")
+    staged: dict[Path, tuple[Path, tuple[int, int]]] = {}
+    created: dict[Path, os.stat_result] = {}
+    try:
+        for path, content in contents.items():
+            _assert_parent_identity(path, expected_parent_identity)
+            descriptor, name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary = Path(name)
+            staged[path] = temporary, _identity(os.fstat(descriptor))
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(content)
+        for path, (temporary, _) in staged.items():
+            _assert_parent_identity(path, expected_parent_identity)
+            # Keep the staging link until commit/rollback to identify our bytes.
+            metadata = temporary.stat()
+            os.link(temporary, path)
+            created[path] = metadata
+            _assert_parent_identity(path, expected_parent_identity)
+    except BaseException:
+        for path, metadata in created.items():
+            try:
+                _assert_parent_identity(path, expected_parent_identity)
+                current = path.lstat()
+            except (OSError, ValueError):
+                continue
+            if (
+                _identity(current) == _identity(metadata)
+                and current.st_size == metadata.st_size
+                and current.st_mtime_ns == metadata.st_mtime_ns
+            ):
+                path.unlink()
+        raise
+    finally:
+        for temporary, identity in staged.values():
+            try:
+                _assert_parent_identity(temporary, expected_parent_identity)
+                if _identity(temporary.lstat()) == identity:
+                    temporary.unlink()
+            except (OSError, ValueError):
+                # Never clean up a replacement directory or someone else's file.
+                pass

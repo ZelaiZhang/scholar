@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from research_os.yaml_io import load_yaml
+
 from research_os.ideas import (
     IdeaArchive,
     IdeaRecord,
@@ -353,7 +355,7 @@ def load_cycle_manifest(
     expected_parent_identity: tuple[int, int] | None = None,
 ) -> CycleManifest:
     try:
-        raw = yaml.safe_load(
+        raw = load_yaml(
             read_stable_direct_text(
                 path,
                 expected_parent=path.parent,

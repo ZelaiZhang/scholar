@@ -1,0 +1,13 @@
+# Public paper versions and documentation inspected on 2026-09-30.
+# Registration does not authorize sending source contents to model APIs.
+https://www.columbiapsychiatry.org/research/research-labs/diagnostic-and-assessment-lab/structured-clinical-interview-dsm-disorders-12
+arxiv:2510.25232v2
+arxiv:2502.20689v1
+arxiv:2510.11967v1
+arxiv:2508.19828v5
+arxiv:2602.12871v2
+arxiv:2607.01523v1
+arxiv:2607.15202v1
+https://aclanthology.org/2026.findings-acl.584/
+https://github.com/X-LANCE/PsyCo-Diagnosis
+https://github.com/HoyunS/MentalBench

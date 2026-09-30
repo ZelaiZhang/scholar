@@ -15,6 +15,7 @@ from research_os.io import (
     read_stable_direct_text,
 )
 from research_os.sources import SOURCE_ID_PATTERN
+from research_os.yaml_io import load_yaml
 
 
 class ProjectExistsError(FileExistsError):
@@ -169,7 +170,7 @@ def load_project_manifest(
         )
 
     try:
-        raw = yaml.safe_load(
+        raw = load_yaml(
             read_stable_direct_text(
                 path,
                 expected_parent=project_path,

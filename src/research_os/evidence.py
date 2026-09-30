@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 from research_os.io import read_stable_direct_text
+from research_os.yaml_io import load_yaml
 
 
 class LedgerFormatError(ValueError):
@@ -15,6 +16,10 @@ class LedgerFormatError(ValueError):
 ALLOWED_TYPES = {"fact", "inference", "hypothesis"}
 ALLOWED_STATUS = {"unverified", "partially_verified", "verified", "conflicted"}
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
+
+
+def _has_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 @dataclass(frozen=True)
@@ -31,7 +36,7 @@ def load_ledger(
     expected_parent_identity: tuple[int, int] | None = None,
 ) -> dict[str, object]:
     try:
-        loaded = yaml.safe_load(
+        loaded = load_yaml(
             read_stable_direct_text(
                 path,
                 expected_parent=expected_parent,
@@ -70,7 +75,7 @@ def validate_ledger(
 
         raw_claim_id = str(raw_claim.get("claim_id", "")).strip()
         claim_id = raw_claim_id or f"item-{index}"
-        if not raw_claim_id:
+        if not _has_text(raw_claim.get("claim_id")):
             issues.append(
                 ValidationIssue(
                     "missing_claim_id", claim_id, "claim 必须有稳定且非空的 claim_id"
@@ -85,13 +90,13 @@ def validate_ledger(
         if raw_claim_id:
             seen.add(raw_claim_id)
 
-        if not str(raw_claim.get("statement", "")).strip():
+        if not _has_text(raw_claim.get("statement")):
             issues.append(
                 ValidationIssue("missing_statement", claim_id, "claim 陈述不能为空")
             )
 
         claim_type = raw_claim.get("type")
-        if claim_type not in ALLOWED_TYPES:
+        if not isinstance(claim_type, str) or claim_type not in ALLOWED_TYPES:
             issues.append(
                 ValidationIssue(
                     "invalid_type",
@@ -101,19 +106,20 @@ def validate_ledger(
             )
 
         status = raw_claim.get("status")
-        if status not in ALLOWED_STATUS:
+        if not isinstance(status, str) or status not in ALLOWED_STATUS:
             issues.append(
                 ValidationIssue("invalid_status", claim_id, "未知的证据核验状态")
             )
 
-        if raw_claim.get("confidence") not in ALLOWED_CONFIDENCE:
+        confidence = raw_claim.get("confidence")
+        if not isinstance(confidence, str) or confidence not in ALLOWED_CONFIDENCE:
             issues.append(
                 ValidationIssue(
                     "invalid_confidence", claim_id, "置信度必须是 low、medium 或 high"
                 )
             )
 
-        if not str(raw_claim.get("limitations", "")).strip():
+        if not _has_text(raw_claim.get("limitations")):
             issues.append(
                 ValidationIssue(
                     "missing_limitations", claim_id, "必须明确陈述证据限制"
@@ -162,7 +168,7 @@ def validate_ledger(
                     )
                     continue
                 source_id = str(source.get("source_id", "")).strip()
-                if not source_id:
+                if not _has_text(source.get("source_id")):
                     issues.append(
                         ValidationIssue(
                             "missing_source_id",
@@ -178,7 +184,7 @@ def validate_ledger(
                             f"{lane_label}来源未登记: {source_id}",
                         )
                     )
-                if not str(source.get("locator", "")).strip():
+                if not _has_text(source.get("locator")):
                     issues.append(
                         ValidationIssue(
                             "missing_locator",

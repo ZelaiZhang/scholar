@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from research_os.io import atomic_write_text
+from research_os.io import atomic_write_text, read_stable_direct_text
 
 
 SOURCE_ID_PATTERN = re.compile(r"^src-[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -204,20 +204,34 @@ class SourceRegistry:
 
     def _read(self) -> list[SourceRecord]:
         self._assert_parent_identity()
-        if not self.path.exists():
+        try:
+            self.path.lstat()
+        except FileNotFoundError:
             return []
         records: list[SourceRecord] = []
+        seen: set[str] = set()
+        content = read_stable_direct_text(
+            self.path,
+            expected_parent_identity=self.expected_parent_identity,
+        )
         for line_number, line in enumerate(
-            self.path.read_text(encoding="utf-8").splitlines(), 1
+            content.splitlines(), 1
         ):
             if not line.strip():
                 continue
             try:
-                records.append(SourceRecord(**json.loads(line)))
+                record = SourceRecord(**json.loads(line))
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise ValueError(
                     f"来源登记表第 {line_number} 行损坏: {self.path}"
                 ) from exc
+            if record.source_id in seen:
+                raise ValueError(
+                    f"来源登记表第 {line_number} 行 source_id 重复: {record.source_id}"
+                )
+            seen.add(record.source_id)
+            records.append(record)
+        self._assert_parent_identity()
         return records
 
     def records(self) -> tuple[SourceRecord, ...]:

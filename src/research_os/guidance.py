@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from research_os.yaml_io import load_yaml
+
 from research_os.evidence import load_ledger, validate_ledger
 from research_os.project import (
     load_project_manifest,
@@ -210,7 +212,7 @@ def _result_inputs(
     if manifest_identity != manifest_identity_before:
         raise OSError("results manifest changed during validation")
     try:
-        raw = yaml.safe_load(raw_text)
+        raw = load_yaml(raw_text)
     except yaml.YAMLError as exc:
         raise ValueError("results manifest is not valid YAML") from exc
     if not isinstance(raw, dict) or set(raw) != {"schema_version", "results"}:

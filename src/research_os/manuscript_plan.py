@@ -356,7 +356,7 @@ def _section_readiness(
                 common_citation,
             ),
             claim_ids=citation_ids,
-            artifact_paths=("01-literature-matrix.md", "02-evidence-ledger.yaml"),
+            artifact_paths=("03-literature-review.md", "02-evidence-ledger.yaml"),
         ),
         "methods": _readiness(
             code="methods",
@@ -456,7 +456,7 @@ def manuscript_plan_from_brief(brief: MeetingBrief) -> ManuscriptPlan:
         action = ManuscriptAction(
             code="DRAFT_EVIDENCE_OUTLINE",
             reason="The evidence and human Idea gates are ready for a bounded outline.",
-            target="08-manuscript-draft.md",
+            target="writing/manuscript-outline.md",
             command=(
                 f"$manuscript-assistant 基于 {brief.project.slug} 的 manuscript-plan "
                 "和核验证据账本创建论文大纲，不补写缺失引用或结果"

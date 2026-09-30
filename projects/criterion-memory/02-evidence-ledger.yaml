@@ -1,0 +1,166 @@
+project: criterion-memory
+schema_version: 1
+claims:
+- claim_id: F01
+  statement: Columbia describes SCID-5 as a semi-structured DSM-5 interview administered
+    by a clinician or trained mental health professional.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-7199934b02d27442
+    locator: 'FAQ: What is the SCID-5?, opening paragraph'
+  opposition: []
+  limitations: Official public overview only; the researcher's scanned book and its
+    edition have not been inspected.
+- claim_id: F02
+  statement: PsyCoTalk describes transforming SCID-5-RV into a hierarchical diagnostic
+    state machine and a diagnostic context tree.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-19423ffa02550e36
+    locator: 'arXiv v2, Section 4.1: Clinical-Grounded Interview Pipeline, opening
+      paragraphs'
+  opposition: []
+  limitations: Selected full-text sections inspected; this verifies a reported design,
+    not independent clinical efficacy.
+- claim_id: F03
+  statement: PsyCoTalk uses binary symptom threshold states and describes a patient
+    simulator that answers no for symptoms absent from its EMR or incompatible with
+    its provisional diagnosis.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-19423ffa02550e36
+    locator: 'arXiv v2, Section 4.1: Binary symptom scale and flow control; Section
+      4.2: Patient Agent'
+  opposition: []
+  limitations: This is a simulation rule in that paper; it does not establish that
+    undocumented evidence is negative in a clinical record.
+- claim_id: F04
+  statement: ProAI encodes diagnostic criteria in a binary-tree knowledge structure
+    whose transitions include left, right, stay, and back.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-d2e6f1d33876e3e2
+    locator: arXiv v1, Section 3.2.2, equations (9)-(10) and following paragraph
+  opposition: []
+  limitations: Selected method sections inspected; no claim about optimal budgeted
+    memory or independently reproduced performance.
+- claim_id: F05
+  statement: Context-Folding introduces branch-and-fold context operations and an
+    RL framework named FoldGRPO.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-c3d3cd48bfcbb549
+    locator: arXiv v1, Abstract, first and second paragraphs
+  opposition: []
+  limitations: Abstract only; full training procedure and reproduction requirements
+    remain unread.
+- claim_id: F06
+  statement: Memory-R1 describes an RL memory manager with ADD, UPDATE, DELETE, and
+    NOOP operations together with an answer agent.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-3e94ac1d06aae1ba
+    locator: arXiv v5, Abstract, paragraph beginning We present Memory-R1
+  opposition: []
+  limitations: Abstract only; no transfer to psychiatric interviews has been established
+    here.
+- claim_id: F07
+  statement: MentalBench describes DSM-grounded synthetic cases generated from MentalKG
+    while varying information completeness and diagnostic complexity.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-b6fbe2aa2943f0f7
+    locator: arXiv v2, Abstract, paragraphs beginning In this paper and Using MentalKG
+  opposition: []
+  limitations: Abstract and author README only; dataset license, annotation coverage,
+    and case-group reconstruction require further checking.
+- claim_id: F08
+  statement: Multi-Head Recurrent Memory proposes a training-free memory divided into
+    independently updated heads.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-470574fbc9fa78bf
+    locator: arXiv v1, Abstract, paragraphs beginning Retention collapses and At each
+      step
+  opposition: []
+  limitations: Abstract only; no medical-domain effectiveness is inferred.
+- claim_id: F09
+  statement: The Self-Evolving Human-Centered annotation framework describes evidence
+    selection, criterion-level analysis, expert revision, and Example and Reflection
+    memories.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-2f83aace052c9b5f
+    locator: arXiv v1, Section III opening paragraph; Sections III-A and III-B
+  opposition: []
+  limitations: Selected framework sections inspected; this is annotation support rather
+    than evidence for budgeted interactive diagnosis.
+- claim_id: F10
+  statement: STITCH indexes trajectory memory using contextual intent and retrieves
+    snippets by intent compatibility.
+  type: fact
+  status: verified
+  confidence: high
+  support:
+  - source_id: src-6c0bd0be26ab9066
+    locator: ACL Anthology 2026.findings-acl.584, Abstract, opening two paragraphs
+  opposition: []
+  limitations: Official abstract only; full methods and medical transfer remain unread.
+- claim_id: I01
+  statement: Tree guidance, backtracking, criterion-level annotation, and learned
+    memory are already represented in the inspected works; their combination alone
+    is a weak novelty argument.
+  type: inference
+  status: partially_verified
+  confidence: medium
+  support:
+  - source_id: src-19423ffa02550e36
+    locator: Section 4.1
+  - source_id: src-d2e6f1d33876e3e2
+    locator: Section 3.2.2
+  - source_id: src-3e94ac1d06aae1ba
+    locator: Abstract
+  - source_id: src-2f83aace052c9b5f
+    locator: Section III
+  opposition: []
+  limitations: Limited search on 2026-09-30; novelty of a particular implementation
+    is not settled.
+- claim_id: H01
+  statement: At a matched context budget, criterion-preserving revisable memory may
+    reduce critical evidence loss while improving diagnosis quality over strong general-memory
+    baselines.
+  type: hypothesis
+  status: unverified
+  confidence: low
+  support: []
+  opposition: []
+  limitations: Unimplemented hypothesis; no experimental result, dataset license clearance,
+    or clinician validation exists in this workspace.
+- claim_id: H02
+  statement: A learned memory policy may improve the quality-cost tradeoff beyond
+    a deterministic criterion-preserving policy.
+  type: hypothesis
+  status: unverified
+  confidence: low
+  support: []
+  opposition: []
+  limitations: RL is optional and must justify its added training and inference costs;
+    no training is authorized in this repository.

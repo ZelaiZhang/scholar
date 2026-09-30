@@ -97,3 +97,41 @@ def test_default_transport_caps_http_response_before_full_read(
         provider_module.default_transport(
             "https://provider.test/chat/completions", {}, {}, 1.0
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("base_url", "http://remote.test/v1"),
+        ("base_url", "https://user:password@remote.test/v1"),
+        ("base_url", "https://remote.test:invalid/v1"),
+        ("base_url", "https://remote.test:70000/v1"),
+        ("base_url", "https://remote.test/v1?key=secret"),
+        ("base_url", "https://remote.test/v1#fragment"),
+        ("model", ""),
+        ("model", "model\nname"),
+        ("api_key_env", "secret-key"),
+        ("temperature", float("nan")),
+        ("temperature", float("inf")),
+        ("temperature", True),
+        ("temperature", -1),
+        ("timeout", 0),
+        ("timeout", float("nan")),
+    ],
+)
+def test_direct_provider_uses_same_validation_as_role_config(field, value):
+    settings = {
+        "base_url": "https://provider.test/v1",
+        "model": "model",
+        "api_key_env": "TEST_KEY",
+        "temperature": 0.1,
+        "timeout": 60,
+        field: value,
+    }
+    with pytest.raises(ValueError, match=field):
+        OpenAICompatibleProvider(**settings)
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8000/v1", "http://[::1]:8000/v1"])
+def test_provider_supports_local_http_for_offline_services(url):
+    assert OpenAICompatibleProvider(url, "model", "TEST_KEY").base_url == url

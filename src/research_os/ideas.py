@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from research_os.yaml_io import load_yaml
+
 from research_os.io import (
     atomic_create_text,
     atomic_write_text,
@@ -330,7 +332,7 @@ def load_idea_archive(
     expected_parent_identity: tuple[int, int] | None = None,
 ) -> IdeaArchive:
     try:
-        raw = yaml.safe_load(
+        raw = load_yaml(
             read_stable_direct_text(
                 path,
                 expected_parent=expected_parent,
