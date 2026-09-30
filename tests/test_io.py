@@ -82,10 +82,15 @@ def test_stable_reader_rejects_in_place_edit_between_stat_and_open(
 ):
     path = tmp_path / "evidence.md"
     path.write_text("old text", encoding="utf-8")
+    before = path.stat()
     original_open = io_module.os.open
 
     def concurrent_open(*args, **kwargs):
         path.write_text("new text", encoding="utf-8")
+        # Do not depend on the filesystem clock advancing during a fast rewrite.
+        io_module.os.utime(
+            path, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000)
+        )
         return original_open(*args, **kwargs)
 
     monkeypatch.setattr(io_module.os, "open", concurrent_open)
