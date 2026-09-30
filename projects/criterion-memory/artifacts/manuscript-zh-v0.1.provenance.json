@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "artifact_version": "manuscript-zh-v0.1",
+  "generated_at": "2026-09-30T15:20:19.911949+00:00",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed_in_session",
+  "user_request": "在帮我写一份中文的版本",
+  "prompt_sha256": "c4afc1ba9181fc67e8f97b68a1bd1e1e51448dbaffb61b1602edd919a11c90bd",
+  "prompt_hash_scope": "Latest user request only; excludes previous conversation and other model inputs.",
+  "translation_scope": "Chinese rendering of the English prospective manuscript; no new scientific facts, experimental results, or approval claims.",
+  "inputs": [
+    {
+      "path": "writing/manuscript-v0.1.md",
+      "sha256": "cd7013a199573aeec2015bf866ea28cc5732ce09ce83c992e46f2353bf4e46f3"
+    },
+    {
+      "path": "02-evidence-ledger.yaml",
+      "sha256": "6bd6f3d461d39be06ae0d021c2dd62d54aab17781684284192f4b9fd8c75e78f"
+    },
+    {
+      "path": "writing/claim-map.md",
+      "sha256": "33b973f0e9ca2aeb2732f2681ee5c5c4c83dcca43c631d6eec959547e76d25b5"
+    },
+    {
+      "path": "artifacts/draft-provenance.json",
+      "sha256": "312e2923916e359a14a64c98bcb483ed899c4331607814541eea0c2a5ffab562"
+    }
+  ],
+  "input_source_ids": [
+    "src-7199934b02d27442",
+    "src-19423ffa02550e36",
+    "src-d2e6f1d33876e3e2",
+    "src-c3d3cd48bfcbb549",
+    "src-3e94ac1d06aae1ba",
+    "src-470574fbc9fa78bf",
+    "src-6c0bd0be26ab9066",
+    "src-b6fbe2aa2943f0f7",
+    "src-2f83aace052c9b5f"
+  ],
+  "source_verification_scope": "Inherited verified ledger claims and locators; no new source retrieval or source verification performed during translation.",
+  "factual_claim_bindings": [
+    {
+      "claim_id": "F01",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-7199934b02d27442",
+          "locator": "FAQ: What is the SCID-5?, opening paragraph"
+        }
+      ]
+    },
+    {
+      "claim_id": "F02",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-19423ffa02550e36",
+          "locator": "arXiv v2, Section 4.1: Clinical-Grounded Interview Pipeline, opening paragraphs"
+        }
+      ]
+    },
+    {
+      "claim_id": "F04",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-d2e6f1d33876e3e2",
+          "locator": "arXiv v1, Section 3.2.2, equations (9)-(10) and following paragraph"
+        }
+      ]
+    },
+    {
+      "claim_id": "F03",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-19423ffa02550e36",
+          "locator": "arXiv v2, Section 4.1: Binary symptom scale and flow control; Section 4.2: Patient Agent"
+        }
+      ]
+    },
+    {
+      "claim_id": "F05",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-c3d3cd48bfcbb549",
+          "locator": "arXiv v1, Abstract, first and second paragraphs"
+        }
+      ]
+    },
+    {
+      "claim_id": "F06",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-3e94ac1d06aae1ba",
+          "locator": "arXiv v5, Abstract, paragraph beginning We present Memory-R1"
+        }
+      ]
+    },
+    {
+      "claim_id": "F08",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-470574fbc9fa78bf",
+          "locator": "arXiv v1, Abstract, paragraphs beginning Retention collapses and At each step"
+        }
+      ]
+    },
+    {
+      "claim_id": "F10",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-6c0bd0be26ab9066",
+          "locator": "ACL Anthology 2026.findings-acl.584, Abstract, opening two paragraphs"
+        }
+      ]
+    },
+    {
+      "claim_id": "F07",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-b6fbe2aa2943f0f7",
+          "locator": "arXiv v2, Abstract, paragraphs beginning In this paper and Using MentalKG"
+        }
+      ]
+    },
+    {
+      "claim_id": "F09",
+      "status": "verified",
+      "support": [
+        {
+          "source_id": "src-2f83aace052c9b5f",
+          "locator": "arXiv v1, Section III opening paragraph; Sections III-A and III-B"
+        }
+      ]
+    }
+  ],
+  "external_source_fetches": 0,
+  "external_provider_calls": 0,
+  "research_experiments_executed": false,
+  "human_scientific_review": "pending",
+  "outputs": [
+    {
+      "path": "writing/manuscript-zh-v0.1.md",
+      "sha256": "a1e3c36a98fd1bb15f68d504fd0e4a63ed01906cea7770837203c8fd5a21815e"
+    }
+  ],
+  "translation_checks": {
+    "factual_claim_ids_and_order_preserved": true,
+    "source_urls_and_order_preserved": true,
+    "display_and_inline_equations_preserved": true,
+    "eight_sections_and_four_method_subsections_present": true,
+    "results_remain_not_run": true,
+    "original_artifact_hashes_unchanged": true,
+    "experiment_protocol_link_resolves": true
+  }
+}
