@@ -20,7 +20,9 @@
 
 ## 证据与边界
 
-本地回归：400 项通过（Python 3.12.14，warnings-as-errors）；doctor、kb doctor、依赖检查、编译和 wheel 用户旅程通过。远端 CI 配置覆盖 Linux、macOS、Windows；本地通过不代表三平台远端已全部通过。
+本地回归：402 项通过（Python 3.12.14，warnings-as-errors）；doctor、kb doctor、依赖检查、编译和 wheel 用户旅程通过。远端 CI 配置覆盖 Linux、macOS、Windows；各提交的实际状态以 GitHub Actions 为准。
+
+首轮远端 Linux/macOS 通过，Windows 暴露路径 stat 与描述符 fstat 时间字段不一致导致的误报。修复后只在同一 API 内比较时间版本，跨 API 比较文件身份与大小，并保留末尾路径版本复核；新增精度差异与 stat/open 间同长度改写回归，避免通过移除原位修改检查来掩盖问题。
 新增课题 `criterion-memory` 的证据、候选设计和初稿只使用公开材料/研究笔记，没有上传扫描书、病例、密钥或本地 provider 配置。软件测试不是科研实验结果。
 
 多文件输出是逐文件原子创建，**不保证断电时整个集合原子提交**。目录被替换时停止并保留新目录人工文件，旧目录可能留下需人工核对的暂存/已创建文件。

@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -54,6 +55,42 @@ def test_stable_reader_preserves_exact_utf8_and_crlf_bytes(tmp_path):
     expected = "中文证据\r\n原文定位\n"
     path.write_bytes(expected.encode("utf-8"))
     assert read_stable_direct_text(path, max_bytes=len(path.read_bytes())) == expected
+
+
+def test_stable_reader_accepts_different_path_and_descriptor_time_precision(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "evidence.md"
+    path.write_text("public evidence", encoding="utf-8")
+    original_fstat = io_module.os.fstat
+
+    def coarse_fstat(descriptor):
+        metadata = original_fstat(descriptor)
+        return SimpleNamespace(
+            st_dev=metadata.st_dev, st_ino=metadata.st_ino,
+            st_size=metadata.st_size,
+            st_mtime_ns=(metadata.st_mtime_ns // 1_000_000_000) * 1_000_000_000,
+            st_ctime_ns=(metadata.st_ctime_ns // 1_000_000_000) * 1_000_000_000,
+        )
+
+    monkeypatch.setattr(io_module.os, "fstat", coarse_fstat)
+    assert read_stable_direct_text(path) == "public evidence"
+
+
+def test_stable_reader_rejects_in_place_edit_between_stat_and_open(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "evidence.md"
+    path.write_text("old text", encoding="utf-8")
+    original_open = io_module.os.open
+
+    def concurrent_open(*args, **kwargs):
+        path.write_text("new text", encoding="utf-8")
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(io_module.os, "open", concurrent_open)
+    with pytest.raises(OSError, match="读取.*(修改|替换)"):
+        read_stable_direct_text(path)
 
 
 def test_grouped_create_preserves_human_edit_during_rollback(tmp_path, monkeypatch):

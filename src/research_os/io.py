@@ -122,7 +122,10 @@ def read_stable_direct_text(
     descriptor = os.open(path, flags)
     try:
         opened = os.fstat(descriptor)
-        if _file_version(opened) != _file_version(before):
+        # Windows can expose different timestamp semantics/precision via stat/fstat.
+        # Compare timestamps only within the same API; the final lstat below
+        # still detects in-place edits between the initial lstat and this open.
+        if _identity(opened) != _identity(before) or opened.st_size != before.st_size:
             raise OSError(f"读取文件在打开期间被修改或替换: {path}")
         chunks: list[bytes] = []
         size = 0
