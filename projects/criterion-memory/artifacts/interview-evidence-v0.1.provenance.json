@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-02T06:29:44.691629+00:00",
+  "user_facing_date": "2026-10-02",
+  "timezone": "Asia/Shanghai",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed",
+  "captured_user_request": "你现在用的ultra只能帮我优化我的这个论文和相关实验，甚至你可以帮我写一套全新的，特别厉害的用来诊断问诊怎么提取真正的关键信息的方式的代码",
+  "prompt_sha256": "d727da1610506efb021a2e02db0b4cc46071b8cdcd4a6d557525e14f3942e402",
+  "prompt_hash_scope": "latest user request only; excludes prior turns, tool results and internal contexts",
+  "input_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "b82bd5ec93ff038fd89900255b197469628b3322584ca2c367928b13b1d56ccd"
+    },
+    {
+      "path": ".agents/skills/manuscript-assistant/SKILL.md",
+      "sha256": "8bc3ea0c8cb69a3b667f75941e0b55b5eea819963545dfc878df3a0512def230"
+    },
+    {
+      "path": ".agents/skills/experiment-advisor/SKILL.md",
+      "sha256": "c8f7b897e06127091413a4ace8814a36fba7bac8c20bb8aa569b30cd8545747e"
+    },
+    {
+      "path": ".agents/skills/idea-review/SKILL.md",
+      "sha256": "b957699ecc04524630400dc6a3c641d5925388c55b5f633faadd96eaed9bd359"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger.yaml",
+      "sha256": "6bd6f3d461d39be06ae0d021c2dd62d54aab17781684284192f4b9fd8c75e78f"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger-multiturn-v0.2.yaml",
+      "sha256": "4c391a10bda80430291ad94f22a09b7b848cecb3515a8336713ba39715e07b3c"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger-reported-system-v0.1.yaml",
+      "sha256": "fde8cd29dbcd53800dbec8cd7bbf060b3bdf345d4cb7b3b4eb63699f398c2112"
+    },
+    {
+      "path": "projects/criterion-memory/writing/manuscript-zh-v0.2.md",
+      "sha256": "ee5d2990ee1aa717a22a7cd4caf79f8fa8009d3449c5e51ffc2e47994d570070"
+    }
+  ],
+  "input_source_ids": [
+    "src-19423ffa02550e36",
+    "src-d2e6f1d33876e3e2",
+    "src-2f83aace052c9b5f",
+    "src-ad9d66d28bdc2eac",
+    "src-5068d2127c40e9f4",
+    "src-83fff4bd71532b36"
+  ],
+  "code_repository_local": "/Users/zhitaozhang/Documents/interview-evidence",
+  "code_commit": "296e97513c9e8941c6c29e63a0c7cf524bbc583a",
+  "code_branch": "codex/criterion-evidence",
+  "code_files": [
+    {
+      "path": ".gitignore",
+      "sha256": "0ab7b97fb2a0d1452390504503394bf2ccb6c2474cdefc3973ab2eb0a40efd4b"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "b3b0a96beff971df9ed21893bb7aba3a6cfba32d53df954ce62e5d6480282b5f"
+    },
+    {
+      "path": "README.md",
+      "sha256": "5b258555faa6db5489cec8bae20ad6b4bc2ab9c56eef4f731f14dc5fc0babee6"
+    },
+    {
+      "path": "docs/IMPLEMENTATION-CONTRACT.md",
+      "sha256": "540fb38eea6359c546cd48e807a8bf40c7d476390f631cee51109fa2ec1ac257"
+    },
+    {
+      "path": "docs/INTEGRATION.md",
+      "sha256": "f3a72e5b948804f17f598389d2fc5245cc98d7cdad29ac4f8c9e00373e950841"
+    },
+    {
+      "path": "docs/VALIDATION-v0.1.json",
+      "sha256": "c84d8a2434d2426e98985d4689683cec1f2c6cc822f2d8b3738ed354f8c1f5bb"
+    },
+    {
+      "path": "docs/synthetic-demo-output.json",
+      "sha256": "1b691ef113b6aa4f91d66d8e2c7faaaa28585786ccf45717b3e8535e96c6ed11"
+    },
+    {
+      "path": "examples/extraction-input.json",
+      "sha256": "c8d4e6864f614607d97b9dce8b1639b300e67a94a912a88b539f798da9854acc"
+    },
+    {
+      "path": "examples/extractor-response.json",
+      "sha256": "9ae02fe3e3438f7b9c673a8bcb59df0908be50ae577398b1748c61e9a4facf57"
+    },
+    {
+      "path": "examples/synthetic-interview.json",
+      "sha256": "69c31cf8be324aa205bc00fa551c691f341af19c939da7a314490467ed3ad520"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "9eb079edfa2425ca96b097bcfd130c51da52f58a44c95fc4a398920841d85628"
+    },
+    {
+      "path": "src/interview_evidence/__init__.py",
+      "sha256": "c04f14ccc476df195b07f6fd4560b37fdc61000d47ef2f856b3e12325a5d96b5"
+    },
+    {
+      "path": "src/interview_evidence/__main__.py",
+      "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d"
+    },
+    {
+      "path": "src/interview_evidence/cli.py",
+      "sha256": "4859f2ae9372e7868dc2a3416acd4f0ee5b7c9fe841b133fdfd621d04b27aab0"
+    },
+    {
+      "path": "src/interview_evidence/demo.py",
+      "sha256": "d34d8364a4d024659a86975b0230e8c97f0462e33e5f4314131a2dd56d31343d"
+    },
+    {
+      "path": "src/interview_evidence/extraction.py",
+      "sha256": "f1db6f0d00b112e3d5c776a824ec9e1b1c735d1b12d25d8ee4b19705eded81ab"
+    },
+    {
+      "path": "src/interview_evidence/io.py",
+      "sha256": "637dd8518b6fb5d107714f07ecd1e8d183fef8bdd5d030b5adb6267d5b8a9a82"
+    },
+    {
+      "path": "src/interview_evidence/ledger.py",
+      "sha256": "9b1ef0160355bbcb5947b8f9fd58f676bbcbd6f558b0698d910756830ef198d7"
+    },
+    {
+      "path": "src/interview_evidence/models.py",
+      "sha256": "16e4b844cfd8a2b683ad3880c75ef8488dd1464b47e81d4503a2a0c41865e7c5"
+    },
+    {
+      "path": "src/interview_evidence/packing.py",
+      "sha256": "7ee949a2856c60a1d7273991662e9aad4134ae00436359e5c85382a65788b1e7"
+    },
+    {
+      "path": "src/interview_evidence/pipeline.py",
+      "sha256": "75111c6232512185d708092eece02a37b74ab6eb5a7de036a7ed45798625b873"
+    },
+    {
+      "path": "src/interview_evidence/planning.py",
+      "sha256": "6530e551e0ccdb5a6d832aeeba0ea9f706dd7ce679507715a2ec223f5e505c19"
+    },
+    {
+      "path": "src/interview_evidence/reasoning.py",
+      "sha256": "25d582e94dbc2672c538fe4619949c486dcbb5784eecf50f606413a4e70493f4"
+    },
+    {
+      "path": "src/interview_evidence/safety.py",
+      "sha256": "8b7ed4af89aefc392fbfe2daa5abe05d9163d7845718ca6bf332cc73a4b87740"
+    },
+    {
+      "path": "tests/test_core.py",
+      "sha256": "b9094de992fb597d72bfbf47b445c4f03ffa30037ffdbe6ec5f537943648ac2a"
+    },
+    {
+      "path": "tests/test_pipeline.py",
+      "sha256": "78504e857008e979c70ef4e6364bc4c072e8352d8861b66352641e3ce9c0d4c8"
+    },
+    {
+      "path": "tests/test_selection.py",
+      "sha256": "6dd0e6de159f840367ad73f87f643d618ca312d528aebea3f757d26f3c47d246"
+    }
+  ],
+  "code_snapshot": "projects/criterion-memory/artifacts/interview-evidence-v0.1.zip",
+  "snapshot_sha256": "04516b936a18c1123c53007868ccdde20c7f17e450373b61a411753d21d9cd6c",
+  "checks": {
+    "schema_version": 1,
+    "checked_at_utc": "2026-10-02T06:28:20.398089+00:00",
+    "python_runtime": "Python 3.12 (existing scholar .venv)",
+    "unit_tests": {
+      "count": 87,
+      "status": "passed",
+      "scope": "synthetic software behavior only"
+    },
+    "compileall": "passed",
+    "cli_flows": [
+      "build-request",
+      "ingest-response",
+      "replay",
+      "budget-stop",
+      "existing-output-protection"
+    ],
+    "cli_status": "passed",
+    "model_calls": 0,
+    "network_model_calls": 0,
+    "medical_effectiveness": "not_evaluated",
+    "existing_tree_integration": "not_performed; original repository not provided",
+    "known_limits": [
+      "quotation grounding does not certify semantic values/scopes",
+      "latest witnesses preserve simple rule state, not all source facts",
+      "coverage heuristic is not optimal question planning",
+      "manual approval is required for revisions; no model self-approval",
+      "default budget measures bytes, not model tokens"
+    ]
+  },
+  "ledger_validation": "three reused ledgers passed",
+  "medical_experiments_executed": false,
+  "new_diagnosis_performance_results": null,
+  "original_117_of_132_attributed_to_prototype": false,
+  "human_final_topic_and_submission": "pending",
+  "outputs": [
+    {
+      "path": "projects/criterion-memory/writing/criterion-evidence-method-v0.1.md",
+      "sha256": "ea5b4c9d3b4cbe5aab483f7f0e63e00310cf0c36948c0b5f965578f59b70fb4b"
+    },
+    {
+      "path": "projects/criterion-memory/05-experiment-design-evidence-extraction-v0.3.md",
+      "sha256": "e87eeeadce46bb6a889d5db96e09d6a758e6c59d705402be38a6aad0c7f7b095"
+    },
+    {
+      "path": "projects/criterion-memory/writing/manuscript-extension-v0.3.md",
+      "sha256": "bc1b008c20d35c277d722fa1138e080b2ffae2a68c2d0daf1f2504db9060769f"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/interview-evidence-v0.1.zip",
+      "sha256": "04516b936a18c1123c53007868ccdde20c7f17e450373b61a411753d21d9cd6c"
+    }
+  ],
+  "unresolved": [
+    "original tree repository and entrypoint unavailable",
+    "source permission, case grouping and gold annotation",
+    "semantic extraction and scope accuracy not evaluated",
+    "actual token/cost-matched strong baselines not run",
+    "manual revision workflow only; no automatic correction approval",
+    "new scientific novelty and medical improvement not established"
+  ]
+}
