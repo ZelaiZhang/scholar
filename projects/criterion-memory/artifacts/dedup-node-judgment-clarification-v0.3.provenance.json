@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "artifact_version": "dedup-node-judgment-clarification-v0.3",
+  "generated_at": "2026-10-02T05:22:50.088409+00:00",
+  "user_facing_date": "2026-10-02",
+  "user_timezone": "Asia/Shanghai",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed_in_session",
+  "captured_user_clarification": "json格式是我发现的防止“重复提问”功能对树的节点判断时产生问题",
+  "prompt_sha256": "496d079fe9ff01af44fb793ad9ffc902a92803f90c7fab3aed895f6711284241",
+  "prompt_hash_scope": "Latest user clarification only; excludes previous conversation and other generation context.",
+  "input_source_ids": [
+    "researcher-report-dedup-json-2026-10-02"
+  ],
+  "input_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "b82bd5ec93ff038fd89900255b197469628b3322584ca2c367928b13b1d56ccd"
+    },
+    {
+      "path": ".agents/skills/experiment-advisor/SKILL.md",
+      "sha256": "c8f7b897e06127091413a4ace8814a36fba7bac8c20bb8aa569b30cd8545747e"
+    },
+    {
+      "path": "projects/criterion-memory/notes/turn-json-state-baseline-v0.2.md",
+      "sha256": "c56b4218b6d6ca6c73d6d261af5d7b9ff36cc1a741ffdd2a0f795d673a2c5e8c"
+    }
+  ],
+  "supersedes_interpretation_in": "notes/turn-json-state-baseline-v0.2.md",
+  "scope": "Correct the reported role of JSON and propose deduplication-by-representation controls; no new empirical manuscript claims.",
+  "external_source_fetches": 0,
+  "research_os_model_provider_calls": 0,
+  "research_experiments_executed": false,
+  "implementation_review": "pending",
+  "user_report_status": "unverified",
+  "human_scientific_review": "pending",
+  "topic_selection": "pending",
+  "outputs": [
+    {
+      "path": "notes/dedup-node-judgment-clarification-v0.3.md",
+      "sha256": "9cee58bb9111ef2dd70b99591f0621f655bed55b91d7938b0ee7bc34df6d560a"
+    }
+  ],
+  "validation": {
+    "exact_clarification_preserved": true,
+    "four_control_conditions_present": true,
+    "previous_project_and_manuscript_artifacts_preserved": true,
+    "prior_note_link_resolves": true,
+    "no_completed_stage_marker": true
+  }
+}
