@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "artifact_version": "turn-json-state-baseline-v0.2",
+  "generated_at": "2026-10-02T05:18:34.298075+00:00",
+  "user_facing_date": "2026-10-02",
+  "user_timezone": "Asia/Shanghai",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed_in_session",
+  "captured_researcher_reports": [
+    "我的树会存每轮的对话，最开始直接把所有上下文发给大模型来判断节点的，但是这样的效果不好，后来是我讲上下文用json的格式存起来，并标注好轮次，才让树取得了比较好的效果",
+    "还包括节点判断或诊断条件状态",
+    "树只会按照顺序走下去，应该是不会判断旧节点错误的，我做了这个json最开始只是为了防止重复提问，但是发现效果变差了，通过用json的格式才解决这个问题"
+  ],
+  "prompt_sha256": "f9b66423d8739deda3acd4ffa11a0ad4e3304c8d25442f8d60383a38593867ef",
+  "prompt_hash_scope": "Three researcher statements joined by two newlines; excludes all other generation context.",
+  "input_source_ids": [
+    "researcher-report-turn-json-2026-10-02"
+  ],
+  "input_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "b82bd5ec93ff038fd89900255b197469628b3322584ca2c367928b13b1d56ccd"
+    },
+    {
+      "path": ".agents/skills/experiment-advisor/SKILL.md",
+      "sha256": "c8f7b897e06127091413a4ace8814a36fba7bac8c20bb8aa569b30cd8545747e"
+    },
+    {
+      "path": "projects/criterion-memory/05-experiment-design.md",
+      "sha256": "29cfc8ff1af82184a0ec0c80035147bec20df0c0177f077157d7ccaaf5794952"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger.yaml",
+      "sha256": "6bd6f3d461d39be06ae0d021c2dd62d54aab17781684284192f4b9fd8c75e78f"
+    },
+    {
+      "path": "projects/criterion-memory/notes/method-spec.md",
+      "sha256": "be8308fec0f9c53cc48b15b6cf5ee55d34979dc673cab49e71d24644e385dd58"
+    },
+    {
+      "path": "projects/criterion-memory/06-result-analysis.md",
+      "sha256": "7cdf3d31d3a67221a5adc1fac58ae3c8eab84ec2f7c7d6db6a69e72edcece03c"
+    }
+  ],
+  "public_context_reading": [
+    {
+      "url": "https://arxiv.org/abs/2310.11324",
+      "reading_scope": "abstract only",
+      "used_for": "prospective format-control design; not added as a manuscript fact"
+    },
+    {
+      "url": "https://aclanthology.org/2024.tacl-1.9/",
+      "reading_scope": "official abstract only",
+      "used_for": "prospective context-control design; not added as a manuscript fact"
+    }
+  ],
+  "web_search_performed": true,
+  "research_os_model_provider_calls": 0,
+  "research_experiments_executed": false,
+  "implementation_review": "pending",
+  "user_report_status": "unverified",
+  "human_scientific_review": "pending",
+  "topic_selection": "pending",
+  "outputs": [
+    {
+      "path": "notes/turn-json-state-baseline-v0.2.md",
+      "sha256": "c56b4218b6d6ca6c73d6d261af5d7b9ff36cc1a741ffdd2a0f795d673a2c5e8c"
+    }
+  ],
+  "validation": {
+    "researcher_statements_preserved": true,
+    "implementation_uncertainty_preserved": true,
+    "previous_english_and_chinese_drafts_preserved": true,
+    "previous_project_artifact_hashes_preserved": true,
+    "no_completed_stage_marker": true,
+    "existing_ledger_validation": "passed"
+  }
+}
