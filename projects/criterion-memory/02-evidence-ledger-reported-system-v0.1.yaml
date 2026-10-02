@@ -1,0 +1,168 @@
+project: criterion-memory
+schema_version: 1
+verification_scope: reported_material_content_only
+experiment_code_and_configuration_audit: unverified
+clinical_effectiveness: not_established
+claims:
+  - claim_id: R01
+    statement: "The supplied architecture figure describes standardizing DSM-5 criteria, SCID-5 questions and coding rules into diagnostic trees, and running all trees in the same symptom category in the current experiment."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M2; source figure Image #3, panels a and b"
+    opposition: []
+    limitations: "Verified as the figure's reported design only. Scanned source edition, tree content, coding implementation and licenses were not inspected."
+  - claim_id: R02
+    statement: "Panel c describes criterion decomposition, relevant Q&A retrieval, same-turn question/response quotations, observed facts, support/refute/insufficient evidence, validation and adaptive probing when the criterion remains undecidable."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M3; source figure Image #3, panel c"
+    opposition: []
+    limitations: "Diagram content only. This does not independently establish faithful retrieval, semantic correctness or a quantified component benefit."
+  - claim_id: R03
+    statement: "Panel c reports separate criterion-state and symptom-note updates, while retaining the full dialogue history as the primary evidence source."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M3, Dual-Memory Update; source figure Image #3, panel c"
+    opposition: []
+    limitations: "Reported design, not an implementation audit. No budget-constrained compression or learned memory policy is established."
+  - claim_id: R04
+    statement: "The figure marks within-tree branching, count/threshold evaluation and branch backtracking as implemented; candidate screening and cross-tree DSM/ICD verification are marked planned."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M2 and M4; source figure Image #3, panels b, d and e and legend"
+    opposition: []
+    limitations: "Reported figure status only. Backtracking need not mean correction of old evidence; the later final reviewer cannot automatically be equated with panel e."
+  - claim_id: R05
+    statement: "The researcher reports organizing dialogue with turn IDs, node judgments and criterion states in JSON to address interference from duplicate-question suppression with node judgment."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M1, researcher conversation transcription"
+    opposition: []
+    limitations: "Verified as a researcher-reported observation only; no controlled JSON or deduplication ablation was supplied."
+  - claim_id: R06
+    statement: "The researcher confirms that the Qwen Ours 110/132 and 117/132 versions differ only by added review with the other settings unchanged, and describes review as a final independent rejudgment of tree outputs."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-5068d2127c40e9f4
+        locator: "M5, two quoted researcher replies"
+    opposition: []
+    limitations: "Verification concerns the replies, not equality of runtime configurations. Review input, prompt, model, randomness, anchoring and label access remain unaudited."
+  - claim_id: R07
+    statement: "The supplied pre-review Qwen3.5-35B-A3B table reports Direct 103/132 (28/33, 75/99), CoT 108/132 (30/33, 78/99), ICL 111/132 (29/33, 82/99), and Ours 110/132 (31/33, 79/99), where parentheses denote correct-tree and wrong-tree counts."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=5].rows and model_label; source Image #5"
+    opposition: []
+    limitations: "Table transcription and arithmetic verified only. Data, run provenance, source-case independence, baseline equivalence and seed variability are unverified."
+  - claim_id: R08
+    statement: "The updated Qwen table reports Ours 117/132, correct-tree decisions 32/33 and wrong-tree rejections 85/99, with balanced accuracy 91.41%; its Direct, CoT and ICL diagnosis counts match the pre-review table."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=7].rows; source Image #7, updated table"
+    opposition: []
+    limitations: "Reported aggregate results only; no paired flips, clustered intervals or independently reproduced experiment. Figures #6 and #7 share counts and must not be treated as independent replications."
+  - claim_id: R09
+    statement: "The updated Qwen table reports LLM overall scores Direct 3.596, CoT 3.781, ICL 3.596 and Ours 3.632; five component-score columns are also transcribed."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=7].rows[*].scores; source Image #7"
+    opposition: []
+    limitations: "Rater model, prompts, scoring scale, blinding, repeated ratings and human agreement are unknown. Scores are not clinical utility or independent diagnosis labels."
+  - claim_id: R10
+    statement: "The turn-count table reports Ours mean 6.44 and median 2 turns, true-tree mean 12.36, wrong-tree mean 4.46, and 76/132 ending within three turns; CoT mean is 4.23, Direct 7.80, and ICL 8.14."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=2].rows; source Image #2"
+    opposition: []
+    limitations: "Model and version alignment to Qwen review tables are unspecified. Turns do not include all compute, and outcomes of short paths are not supplied."
+  - claim_id: R11
+    statement: "Another supplied table reports 528 processed, 526 valid and two Ours failures; Ours accuracy is 71.97% and CoT 78.79%, with the model, asterisk and failure policy unspecified."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=4]; source Image #4, heading and rows"
+    opposition: []
+    limitations: "Retained as a negative result with unresolved provenance; not pooled with Qwen results or used to infer a known cross-model effect."
+  - claim_id: R12
+    statement: "The first supplied diagnostic table reports Direct 105/132, CoT 101/132, ICL 107/132 and Ours 110/132; the model and version are unspecified."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=1].rows; source Image #1"
+    opposition: []
+    limitations: "Table content only; cannot label this as a specific model or independent replication."
+  - claim_id: R13
+    statement: "The researcher tentatively groups the work into three main experiments, added review and tree changes, describing tree changes as added nodes and DSM supplementation."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-ce385114b0736601
+        locator: "G1 quoted researcher reply; G3/G4 mapping boundary"
+    opposition: []
+    limitations: "Verified as a tentative retrospective description only. Models, independent runs, tree variants and matching result tables remain unconfirmed; not evidence of completed separate ablations."
+  - claim_id: A01
+    statement: "With the reported 33 positive and 99 negative candidate-tree judgments, one correct positive decision changes its rate by 3.03 percentage points and balanced accuracy by 1.515 points; one correct negative changes its rate by 1.01 points and balanced accuracy by 0.505 points."
+    type: inference
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=5 or 7].rows denominators; arithmetic 100/33, 100/99 and half-rate changes"
+    opposition: []
+    limitations: "Deterministic arithmetic about candidate-tree metrics, not significance, severity weighting, population accuracy or clinical outcomes."
+  - claim_id: A02
+    statement: "Reported review counts imply a net increase of seven correct judgments (+5.30 percentage points), comprising one positive and six negative; balanced accuracy rises by 4.55 points. Before review Ours has higher balanced accuracy but one fewer overall correct judgment than ICL."
+    type: inference
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=5 and 7].rows; arithmetic differences using unrounded fractions"
+    opposition: []
+    limitations: "Net changes do not reveal corrected and worsened flip counts, causal mechanism or statistical significance."
+  - claim_id: H03
+    statement: "Criterion-linked evidence reasoning may account for part of the observed correct-tree performance, and final reassessment may reduce some erroneous candidate acceptance."
+    type: hypothesis
+    status: unverified
+    confidence: low
+    support:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=5 and 7] exploratory pattern"
+    opposition:
+      - source_id: src-83fff4bd71532b36
+        locator: "figures[figure=4] negative version; no matched extra-call baseline"
+    limitations: "Requires controlled component removal, paired error analysis and information/compute-matched comparisons; no mechanism claim established."

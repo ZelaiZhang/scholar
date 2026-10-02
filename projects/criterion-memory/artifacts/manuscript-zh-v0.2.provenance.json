@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "artifact_version": "manuscript-zh-v0.2-and-experiments-xlsx",
+  "generated_at": "2026-10-02T05:58:52.044991+00:00",
+  "user_facing_date": "2026-10-02",
+  "user_timezone": "Asia/Shanghai",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed_in_session",
+  "captured_user_requests": [
+    "只增加了复检，其余设置相同",
+    "对树输出做最终独立复判",
+    "但是其实我的正确树的正确率都蛮好的所以虽然错误树排除了但是正确树少了一个他的指标就很难看了",
+    "围绕我给你的这些内容你能不能写一篇论文，毕竟走树我的效果指标还是不错的",
+    "哦就这些我跑的数据这么多表格应该是主实验跑了3个，然后加了复检和修改树结构，修改树结构又分为新增节点和用dsm补充树对吗",
+    "把这些实验全部给我整理成一个excel文件",
+    "表格弄完之后接着给我写这个相关的论文"
+  ],
+  "prompt_sha256": "2aa3ac39bca59de2e57cdee223d586dcfe8cbb65a2e60cc8957cf55b26a71f89",
+  "prompt_hash_scope": "Canonical listed user statements only; excludes full conversation, tool results, image bytes and model generation context.",
+  "input_source_ids": [
+    "src-83fff4bd71532b36",
+    "src-5068d2127c40e9f4",
+    "src-ce385114b0736601"
+  ],
+  "input_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "b82bd5ec93ff038fd89900255b197469628b3322584ca2c367928b13b1d56ccd"
+    },
+    {
+      "path": ".agents/skills/manuscript-assistant/SKILL.md",
+      "sha256": "8bc3ea0c8cb69a3b667f75941e0b55b5eea819963545dfc878df3a0512def230"
+    },
+    {
+      "path": ".agents/skills/mock-reviewer/SKILL.md",
+      "sha256": "960373d1f45917f75b95de554efd09fa093c0c735d6511d7c40bd649fe4b8269"
+    },
+    {
+      "path": ".agents/skills/experiment-advisor/SKILL.md",
+      "sha256": "c8f7b897e06127091413a4ace8814a36fba7bac8c20bb8aa569b30cd8545747e"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger.yaml",
+      "sha256": "6bd6f3d461d39be06ae0d021c2dd62d54aab17781684284192f4b9fd8c75e78f"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger-multiturn-v0.2.yaml",
+      "sha256": "4c391a10bda80430291ad94f22a09b7b848cecb3515a8336713ba39715e07b3c"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/user-results-aggregate-v0.1.json",
+      "sha256": "79761f8aca0889d77043bf2e638eab9e72a38a013a49bcb5094ac3caf03be372"
+    },
+    {
+      "path": "projects/criterion-memory/notes/researcher-materials-transcription-v0.1.md",
+      "sha256": "23546aee53ef6a259a42e7b3ad241c6cf8b2dd53800a8802d3f75103794d3ed2"
+    },
+    {
+      "path": "projects/criterion-memory/notes/experiment-grouping-clarification-v0.1.md",
+      "sha256": "b554c8b0270b6753a477695e06f288a0706b9ebd2a8cfbf731b409f916bb90ec"
+    }
+  ],
+  "figure_provenance": "See reinspection-review-v0.2.provenance.json for seven original opaque filenames and image SHA-256; no images or raw case records copied.",
+  "verification_scope": "Reported table/diagram/note contents and arithmetic; experiment provenance, underlying correctness and causal mechanism remain unverified.",
+  "research_os_model_provider_calls": 0,
+  "research_experiments_executed_by_assistant": false,
+  "spreadsheet_authoring_library": "@oai/artifact-tool, bundled Codex Node runtime",
+  "spreadsheet_operations_started_marker": "create; expected count 1; xlsx; run once before authoring",
+  "spreadsheet_sheets": [
+    "实验总览",
+    "复检对照",
+    "诊断数据",
+    "评分数据",
+    "轮次数据",
+    "树结构消融"
+  ],
+  "spreadsheet_records": {
+    "diagnostic": 20,
+    "llm_ratings": 20,
+    "turns": 4
+  },
+  "spreadsheet_checks": {
+    "recalculation_and_source_edit_restore": "passed",
+    "missing_vs_zero": "passed",
+    "formula_error_scan": "zero matches",
+    "saved_xlsx_formula_caches": 144,
+    "saved_zip_xml_checks": "passed",
+    "net_review_counts": [
+      7,
+      1,
+      6
+    ],
+    "visual_review": "all six sheets reviewed",
+    "native_excel_runtime_behavior": "not tested"
+  },
+  "writing_checks": {
+    "ledger_structure_and_source_locators": "passed",
+    "fact_claim_bindings": "passed",
+    "arithmetic": "passed",
+    "local_links": "passed",
+    "historical_manuscripts_and_project_manifest": "unchanged",
+    "four_view_internal_review": "completed with unresolved major issues retained",
+    "final_scientific_review": "pending"
+  },
+  "unresolved": [
+    "three-main-table model and version mapping",
+    "tree-node and DSM-supplement result mapping",
+    "source-case grouping",
+    "per-item corrected and worsened predictions",
+    "full prompts and reviewer input independence",
+    "data permission and ethics",
+    "cost-matched comparisons and statistics"
+  ],
+  "outputs": [
+    {
+      "path": "library/sources.jsonl",
+      "sha256": "8fa9126f9769b3e8709fcca301644217bfc1e7199aac6b18f614a27ffb5a7356"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger-reported-system-v0.1.yaml",
+      "sha256": "fde8cd29dbcd53800dbec8cd7bbf060b3bdf345d4cb7b3b4eb63699f398c2112"
+    },
+    {
+      "path": "projects/criterion-memory/writing/manuscript-zh-v0.2.md",
+      "sha256": "ee5d2990ee1aa717a22a7cd4caf79f8fa8009d3449c5e51ffc2e47994d570070"
+    },
+    {
+      "path": "projects/criterion-memory/writing/claim-map-v0.2.md",
+      "sha256": "f3304668078ff71584f559ef88c8ccd4c4b740bb77330112114eeb03713e4adc"
+    },
+    {
+      "path": "projects/criterion-memory/05-experiment-design-existing-system-v0.2.md",
+      "sha256": "5583f23429f203b3ed70e7b3f6972d24de6af4c9bc4d60f6f5e8b1824d434405"
+    },
+    {
+      "path": "projects/criterion-memory/reviews/manuscript-zh-v0.2-review.md",
+      "sha256": "0650fe963d59e63a1a35fe6ebe50dfabcc8741d24a77b5296b524ac151d2c281"
+    },
+    {
+      "path": "projects/criterion-memory/START-HERE-v0.2.md",
+      "sha256": "707260d85c3b3b2a910249537da1572f3fa7275971eefc1d62a19868489cb40b"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/diagnostic-experiments-v0.1.build.mjs",
+      "sha256": "40434e33ab7825e2133f3e9ba593d792f46540cdf888c30abfc1e6c66acc98de"
+    },
+    {
+      "path": "outputs/01a0f1e5-ff08-75d1-bd2e-b9842f3ed61b/诊断树实验汇总.xlsx",
+      "sha256": "b3aee5e7aaf27849e0f8c754cbfad280540346b4c55692098d9d056f3548f7e0"
+    }
+  ],
+  "human_final_topic_and_submission_decision": "pending",
+  "results_complete_marker": false,
+  "note": "After the researcher requested a paper around existing results, a new draft reports only verified supplied-material contents. This does not supersede audit gaps or upgrade experiments to independently verified."
+}

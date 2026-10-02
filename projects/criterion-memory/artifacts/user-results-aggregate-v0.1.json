@@ -1,0 +1,445 @@
+{
+  "schema_version": 1,
+  "source_type": "user_supplied_aggregate_screenshots",
+  "source_id": "researcher-results-2026-10-02",
+  "transcription_status": "manually_transcribed_and_arithmetic_checked",
+  "experiment_provenance_status": "unverified",
+  "clinical_outcome_claims": false,
+  "independent_source_case_count": null,
+  "source_case_grouping": "pending_confirmation",
+  "figures": [
+    {
+      "figure": 1,
+      "model": "not_stated",
+      "kind": "diagnostic_and_llm_scores",
+      "rows": [
+        {
+          "method": "Direct",
+          "correct": 105,
+          "n": 132,
+          "true_tree_correct": 30,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 75,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 83.33,
+          "scores": {
+            "clinical_professionalism": 3.633,
+            "ethical_safety": 4.148,
+            "evaluation_accuracy": 3.117,
+            "overall_ability": 3.195,
+            "interview_completeness": 3.492,
+            "llm_overall_score": 3.517
+          }
+        },
+        {
+          "method": "CoT",
+          "correct": 101,
+          "n": 132,
+          "true_tree_correct": 31,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 70,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 82.32,
+          "scores": {
+            "clinical_professionalism": 3.732,
+            "ethical_safety": 4.324,
+            "evaluation_accuracy": 3.239,
+            "overall_ability": 3.394,
+            "interview_completeness": 3.507,
+            "llm_overall_score": 3.639
+          }
+        },
+        {
+          "method": "ICL",
+          "correct": 107,
+          "n": 132,
+          "true_tree_correct": 30,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 77,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 84.34,
+          "scores": {
+            "clinical_professionalism": 3.523,
+            "ethical_safety": 4.086,
+            "evaluation_accuracy": 3.047,
+            "overall_ability": 3.063,
+            "interview_completeness": 3.258,
+            "llm_overall_score": 3.395
+          }
+        },
+        {
+          "method": "Ours",
+          "correct": 110,
+          "n": 132,
+          "true_tree_correct": 31,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 79,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 86.87,
+          "scores": {
+            "clinical_professionalism": 3.946,
+            "ethical_safety": 4.375,
+            "evaluation_accuracy": 3.357,
+            "overall_ability": 3.482,
+            "interview_completeness": 3.625,
+            "llm_overall_score": 3.757
+          }
+        }
+      ]
+    },
+    {
+      "figure": 2,
+      "model": "not_stated",
+      "kind": "interview_turn_counts",
+      "rows": [
+        {
+          "method": "Direct",
+          "mean_turns": 7.8,
+          "median_turns": 8.5,
+          "true_tree_mean_turns": 9.33,
+          "true_tree_median_turns": 10,
+          "wrong_tree_mean_turns": 7.29,
+          "wrong_tree_median_turns": 7,
+          "finished_within_three_turns_count": 4
+        },
+        {
+          "method": "CoT",
+          "mean_turns": 4.23,
+          "median_turns": 4,
+          "true_tree_mean_turns": 5.03,
+          "true_tree_median_turns": 5,
+          "wrong_tree_mean_turns": 3.96,
+          "wrong_tree_median_turns": 3,
+          "finished_within_three_turns_count": 61
+        },
+        {
+          "method": "ICL",
+          "mean_turns": 8.14,
+          "median_turns": 10,
+          "true_tree_mean_turns": 9.79,
+          "true_tree_median_turns": 10,
+          "wrong_tree_mean_turns": 7.6,
+          "wrong_tree_median_turns": 8,
+          "finished_within_three_turns_count": 4
+        },
+        {
+          "method": "Ours",
+          "mean_turns": 6.44,
+          "median_turns": 2,
+          "true_tree_mean_turns": 12.36,
+          "true_tree_median_turns": 12,
+          "wrong_tree_mean_turns": 4.46,
+          "wrong_tree_median_turns": 2,
+          "finished_within_three_turns_count": 76
+        }
+      ]
+    },
+    {
+      "figure": 3,
+      "kind": "architecture",
+      "solid_means": "implemented_as_reported_by_diagram",
+      "dashed_means": "planned_as_reported_by_diagram",
+      "code_verified": false,
+      "planned_components": [
+        "candidate_screening_ranking_top_k",
+        "cross_tree_verification"
+      ]
+    },
+    {
+      "figure": 4,
+      "model": "not_stated",
+      "kind": "other_result_version",
+      "processed": 528,
+      "valid": 526,
+      "ours_failures": 2,
+      "failure_scoring_rule": "not_stated",
+      "rows": [
+        {
+          "method": "Direct",
+          "accuracy_pct_reported": 75.0,
+          "true_tree_rate_pct_reported": 100.0,
+          "wrong_tree_rejection_pct_reported": 66.67,
+          "llm_overall_score": 3.423,
+          "asterisk_shown": false
+        },
+        {
+          "method": "CoT",
+          "accuracy_pct_reported": 78.79,
+          "true_tree_rate_pct_reported": 100.0,
+          "wrong_tree_rejection_pct_reported": 71.72,
+          "llm_overall_score": 3.4,
+          "asterisk_shown": false
+        },
+        {
+          "method": "ICL",
+          "accuracy_pct_reported": 76.52,
+          "true_tree_rate_pct_reported": 96.97,
+          "wrong_tree_rejection_pct_reported": 69.7,
+          "llm_overall_score": 2.878,
+          "asterisk_shown": false
+        },
+        {
+          "method": "Ours",
+          "accuracy_pct_reported": 71.97,
+          "true_tree_rate_pct_reported": 81.82,
+          "wrong_tree_rejection_pct_reported": 68.69,
+          "llm_overall_score": 3.723,
+          "asterisk_shown": true
+        }
+      ]
+    },
+    {
+      "figure": 5,
+      "model_label": "Qwen3.5-35B-A3B",
+      "kind": "before_final_independent_review_as_confirmed_by_researcher",
+      "processed": 528,
+      "valid": 528,
+      "rows": [
+        {
+          "method": "Direct",
+          "correct": 103,
+          "n": 132,
+          "true_tree_correct": 28,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 75,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 80.3,
+          "scores": {
+            "clinical_professionalism": 3.849,
+            "ethical_safety": 4.183,
+            "evaluation_accuracy": 3.194,
+            "overall_ability": 3.226,
+            "interview_completeness": 3.527,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "CoT",
+          "correct": 108,
+          "n": 132,
+          "true_tree_correct": 30,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 78,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 84.85,
+          "scores": {
+            "clinical_professionalism": 4.0,
+            "ethical_safety": 4.286,
+            "evaluation_accuracy": 3.333,
+            "overall_ability": 3.476,
+            "interview_completeness": 3.81,
+            "llm_overall_score": 3.781
+          }
+        },
+        {
+          "method": "ICL",
+          "correct": 111,
+          "n": 132,
+          "true_tree_correct": 29,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 82,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 85.35,
+          "scores": {
+            "clinical_professionalism": 3.904,
+            "ethical_safety": 4.181,
+            "evaluation_accuracy": 3.191,
+            "overall_ability": 3.234,
+            "interview_completeness": 3.468,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "Ours",
+          "correct": 110,
+          "n": 132,
+          "true_tree_correct": 31,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 79,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 86.87,
+          "scores": {
+            "clinical_professionalism": 3.966,
+            "ethical_safety": 4.119,
+            "evaluation_accuracy": 3.136,
+            "overall_ability": 3.288,
+            "interview_completeness": 3.627,
+            "llm_overall_score": 3.627
+          }
+        }
+      ]
+    },
+    {
+      "figure": 6,
+      "model_label": "Qwen3.5-35B-A3B",
+      "kind": "after_review_table_with_previous_scores",
+      "rows": [
+        {
+          "method": "Direct",
+          "correct": 103,
+          "n": 132,
+          "true_tree_correct": 28,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 75,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 80.3,
+          "scores": {
+            "clinical_professionalism": 3.849,
+            "ethical_safety": 4.183,
+            "evaluation_accuracy": 3.194,
+            "overall_ability": 3.226,
+            "interview_completeness": 3.527,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "CoT",
+          "correct": 108,
+          "n": 132,
+          "true_tree_correct": 30,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 78,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 84.85,
+          "scores": {
+            "clinical_professionalism": 4.0,
+            "ethical_safety": 4.286,
+            "evaluation_accuracy": 3.333,
+            "overall_ability": 3.476,
+            "interview_completeness": 3.81,
+            "llm_overall_score": 3.781
+          }
+        },
+        {
+          "method": "ICL",
+          "correct": 111,
+          "n": 132,
+          "true_tree_correct": 29,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 82,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 85.35,
+          "scores": {
+            "clinical_professionalism": 3.904,
+            "ethical_safety": 4.181,
+            "evaluation_accuracy": 3.191,
+            "overall_ability": 3.234,
+            "interview_completeness": 3.468,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "Ours",
+          "correct": 117,
+          "n": 132,
+          "true_tree_correct": 32,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 85,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 91.41,
+          "scores": {
+            "clinical_professionalism": 3.966,
+            "ethical_safety": 4.119,
+            "evaluation_accuracy": 3.136,
+            "overall_ability": 3.288,
+            "interview_completeness": 3.627,
+            "llm_overall_score": 3.627
+          }
+        }
+      ]
+    },
+    {
+      "figure": 7,
+      "model_label": "Qwen3.5-35B-A3B",
+      "kind": "after_review_updated_table",
+      "rows": [
+        {
+          "method": "Direct",
+          "correct": 103,
+          "n": 132,
+          "true_tree_correct": 28,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 75,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 80.3,
+          "scores": {
+            "clinical_professionalism": 3.849,
+            "ethical_safety": 4.183,
+            "evaluation_accuracy": 3.194,
+            "overall_ability": 3.226,
+            "interview_completeness": 3.527,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "CoT",
+          "correct": 108,
+          "n": 132,
+          "true_tree_correct": 30,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 78,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 84.85,
+          "scores": {
+            "clinical_professionalism": 4.0,
+            "ethical_safety": 4.286,
+            "evaluation_accuracy": 3.333,
+            "overall_ability": 3.476,
+            "interview_completeness": 3.81,
+            "llm_overall_score": 3.781
+          }
+        },
+        {
+          "method": "ICL",
+          "correct": 111,
+          "n": 132,
+          "true_tree_correct": 29,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 82,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 85.35,
+          "scores": {
+            "clinical_professionalism": 3.904,
+            "ethical_safety": 4.181,
+            "evaluation_accuracy": 3.191,
+            "overall_ability": 3.234,
+            "interview_completeness": 3.468,
+            "llm_overall_score": 3.596
+          }
+        },
+        {
+          "method": "Ours",
+          "correct": 117,
+          "n": 132,
+          "true_tree_correct": 32,
+          "true_tree_n": 33,
+          "wrong_tree_rejected": 85,
+          "wrong_tree_n": 99,
+          "balanced_accuracy_pct_reported": 91.41,
+          "scores": {
+            "clinical_professionalism": 3.965,
+            "ethical_safety": 4.14,
+            "evaluation_accuracy": 3.158,
+            "overall_ability": 3.263,
+            "interview_completeness": 3.632,
+            "llm_overall_score": 3.632
+          }
+        }
+      ]
+    }
+  ],
+  "researcher_confirmations": {
+    "same_cases_and_model_only_review_added": "user_confirmed_not_log_audited",
+    "review_type": "final_independent_rejudgment_of_tree_outputs",
+    "per_item_flip_counts": "not_provided",
+    "review_input_schema": "not_provided"
+  },
+  "computed_deltas": {
+    "after_minus_before_correct": 7,
+    "after_minus_before_true_tree_correct": 1,
+    "after_minus_before_wrong_tree_rejected": 6,
+    "after_minus_before_accuracy_pp": 5.303030303030303,
+    "after_vs_icl_accuracy_pp": 4.545454545454546,
+    "statistical_significance": "not_computed_missing_paired_grouped_results"
+  }
+}

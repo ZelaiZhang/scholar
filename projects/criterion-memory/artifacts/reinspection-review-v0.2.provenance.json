@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "artifact_version": "reinspection-review-v0.2",
+  "generated_at": "2026-10-02T05:41:22.614758+00:00",
+  "user_facing_date": "2026-10-02",
+  "user_timezone": "Asia/Shanghai",
+  "generator": "Codex / GPT-6 family",
+  "exact_model_revision": "not_exposed",
+  "sampling_parameters": "not_exposed_in_session",
+  "captured_user_requests": [
+    "关于我的这个发现你有没有好的解决方式",
+    "你是觉得在诊断过程中如何控制好上述内容，比较适合作为题目吗，我之前刚看了llm lost in multi- conversation这篇文章，他说将需求总结成一整段比分散给要好",
+    "这个我感觉很垃圾啊没有研究的意义啊",
+    "因为将所有信息重新整理成一段再给大模型提问一下其实就是一个复检的过程",
+    "复检我也做过了，",
+    "只增加了复检，其余设置相同",
+    "对树输出做最终独立复判"
+  ],
+  "captured_response_annotation": {
+    "index": 1,
+    "selected_text": "将 JSON 和去重作为其中的实验因素。",
+    "comment": "这个我感觉很垃圾啊没有研究的意义啊"
+  },
+  "prompt_sha256": "31cc1b67fc11981aee73aaf0b1e84c6859ceea5515e20f55a137f3a0735ea546",
+  "prompt_hash_scope": "Canonical JSON of the listed requests and annotation; excludes other conversation, image pixels, and generation context.",
+  "input_source_ids": [
+    "src-36118295d9f5aeba",
+    "src-550899b424f81468",
+    "src-711f3a72e6127318",
+    "src-3d7014c2a14a6dd7",
+    "src-ad9d66d28bdc2eac",
+    "researcher-results-2026-10-02"
+  ],
+  "input_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "b82bd5ec93ff038fd89900255b197469628b3322584ca2c367928b13b1d56ccd"
+    },
+    {
+      "path": ".agents/skills/experiment-advisor/SKILL.md",
+      "sha256": "c8f7b897e06127091413a4ace8814a36fba7bac8c20bb8aa569b30cd8545747e"
+    },
+    {
+      "path": ".agents/skills/idea-review/SKILL.md",
+      "sha256": "b957699ecc04524630400dc6a3c641d5925388c55b5f633faadd96eaed9bd359"
+    },
+    {
+      "path": ".agents/skills/paper-deep-read/SKILL.md",
+      "sha256": "35f4ac598fc585aa3244c20026a8ae6b2508832e0a1771ae9a197306a36a6792"
+    },
+    {
+      "path": ".agents/skills/result-interpreter/SKILL.md",
+      "sha256": "86160bd1662dd096f697a03a98a72ec2fa3a47c3d7b0467dbef1ec387d5d0e0b"
+    },
+    {
+      "path": "src/research_os/templates/paper-card.md",
+      "sha256": "26071a4637fc445d4afb6384b8643c9c4c3c252b3509c5ae2898ae01bf3f30c4"
+    },
+    {
+      "path": "projects/criterion-memory/00-research-brief.md",
+      "sha256": "f22ecbfa1857990ee961b72cd87816db5f2b3e24841307fafbc4b2bb900a74ab"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger.yaml",
+      "sha256": "6bd6f3d461d39be06ae0d021c2dd62d54aab17781684284192f4b9fd8c75e78f"
+    },
+    {
+      "path": "projects/criterion-memory/03-literature-review.md",
+      "sha256": "e042c16a4f6515b7f3373004aaaa6300a6204abe1f27c7cd1c6b44c4377d7358"
+    },
+    {
+      "path": "projects/criterion-memory/04-idea-candidates.md",
+      "sha256": "c5255262d9971230fab9bf26088c0e633a131d5dc5f2f21b8bf05c227b027897"
+    },
+    {
+      "path": "projects/criterion-memory/05-experiment-design.md",
+      "sha256": "29cfc8ff1af82184a0ec0c80035147bec20df0c0177f077157d7ccaaf5794952"
+    },
+    {
+      "path": "projects/criterion-memory/06-result-analysis.md",
+      "sha256": "7cdf3d31d3a67221a5adc1fac58ae3c8eab84ec2f7c7d6db6a69e72edcece03c"
+    },
+    {
+      "path": "projects/criterion-memory/notes/dedup-node-judgment-clarification-v0.3.md",
+      "sha256": "9cee58bb9111ef2dd70b99591f0621f655bed55b91d7938b0ee7bc34df6d560a"
+    }
+  ],
+  "user_figure_inputs": [
+    {
+      "figure": 1,
+      "filename": "60ecfd3076ad58a15c793a8ccb1f543b.png",
+      "sha256": "7e3d423db744f6fb95cdf6af5fad94a08df9c6a94a6cbdce56286e304203eec9",
+      "locator": "Attached Image #1",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 2,
+      "filename": "a396be07be201b023ef85a85cb93c9e1.png",
+      "sha256": "2851ade34400a610688740088163f44f39fae460300954c7f82861182a47ae91",
+      "locator": "Attached Image #2",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 3,
+      "filename": "77699b3c77659738bff5ecfd7c69b565.png",
+      "sha256": "975d0bcd82b39cd4de0d9e5c32b9b5459996c01f46eebf0fbf4741107ddd7749",
+      "locator": "Attached Image #3",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 4,
+      "filename": "9b889b4f8439c0c5a85173b7d6cf4805.png",
+      "sha256": "48c1249a5946d73b5f51b742ea7b12549de12a5660d495a4a959f55b6e1e8beb",
+      "locator": "Attached Image #4",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 5,
+      "filename": "887b064a0719fed24e1533e61b01e3ab.png",
+      "sha256": "4cf2baa21c862f475c20aa5e0a75002e0b98319d15ea6e4b32080109cb15bbcc",
+      "locator": "Attached Image #5",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 6,
+      "filename": "4acb3ca74442e9bc12ee5569a702b83e.png",
+      "sha256": "5c8eb20597f151d40629ac8fbb002d556a939c5f95a1cfd0cb75b02e1263ecf8",
+      "locator": "Attached Image #6",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    },
+    {
+      "figure": 7,
+      "filename": "59ce22dcf69ccf1c84939fae708dbd62.png",
+      "sha256": "3ff61abff573adde3e73e98cb577ccf133875858d51138689ab7b81adeb81fc6",
+      "locator": "Attached Image #7",
+      "reading_scope": "aggregate table or method diagram only",
+      "copied_into_repository": false
+    }
+  ],
+  "public_source_reading": [
+    {
+      "source_id": "src-36118295d9f5aeba",
+      "url": "https://arxiv.org/html/2505.06120v1",
+      "scope": "abstract; selected full-text sections 3.3, 4.1, 7.1, 7.4, 9 and Appendix B"
+    },
+    {
+      "source_id": "src-550899b424f81468",
+      "url": "https://arxiv.org/abs/2602.07338v1",
+      "scope": "abstract only"
+    },
+    {
+      "source_id": "src-711f3a72e6127318",
+      "url": "https://arxiv.org/abs/2607.20734v1",
+      "scope": "abstract only"
+    },
+    {
+      "source_id": "src-3d7014c2a14a6dd7",
+      "url": "https://arxiv.org/abs/2510.10278",
+      "scope": "abstract only"
+    },
+    {
+      "source_id": "src-ad9d66d28bdc2eac",
+      "url": "https://aclanthology.org/2025.emnlp-main.1340/",
+      "scope": "official abstract only"
+    },
+    {
+      "source_id": "public-dst-incremental-2021-abstract",
+      "url": "https://aclanthology.org/2021.tacl-1.34/",
+      "scope": "official abstract only"
+    },
+    {
+      "source_id": "public-correctable-dst-2022-abstract",
+      "url": "https://aclanthology.org/2022.emnlp-main.56/",
+      "scope": "official abstract only"
+    }
+  ],
+  "public_web_retrieval": "performed; remote article bytes not archived or hashed",
+  "research_os_model_provider_calls": 0,
+  "research_experiments_executed_by_assistant": false,
+  "model_prompts_executed": false,
+  "user_reported_experiment_results_provided": true,
+  "experiment_code_and_result_audit": "pending",
+  "human_scientific_review": "pending",
+  "final_topic_selection": "pending",
+  "outputs": [
+    {
+      "path": "library/sources.jsonl",
+      "sha256": "8fa9126f9769b3e8709fcca301644217bfc1e7199aac6b18f614a27ffb5a7356"
+    },
+    {
+      "path": "library/papers/src-36118295d9f5aeba.md",
+      "sha256": "81fb0a6219e7e1bcb6e24084a03bf680a9fa5129643cc1bba3ff348755ed16d6"
+    },
+    {
+      "path": "projects/criterion-memory/02-evidence-ledger-multiturn-v0.2.yaml",
+      "sha256": "4c391a10bda80430291ad94f22a09b7b848cecb3515a8336713ba39715e07b3c"
+    },
+    {
+      "path": "projects/criterion-memory/04-idea-candidates-v0.2.md",
+      "sha256": "fa857f3a317ea5cd1ccd92db1db3a34934b19ddf6c6f0d14561e9103927ea4ac"
+    },
+    {
+      "path": "projects/criterion-memory/06-result-analysis-v0.2.md",
+      "sha256": "01e7b7018796f2b1664fd7e6438e341ffcccba4ace9969448a6bf28054392b31"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/node-judge-prompt-v0.1.txt",
+      "sha256": "904667749b69397fc6741addbbc031b0b54b0323bd0390e68e50d10e245876d3"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/question-planner-prompt-v0.1.txt",
+      "sha256": "e71dbb90bb416b0f3e6442eab852f28eff0d3ac2afd4ac8c37982b93d9ccb0e9"
+    },
+    {
+      "path": "projects/criterion-memory/artifacts/user-results-aggregate-v0.1.json",
+      "sha256": "79761f8aca0889d77043bf2e638eab9e72a38a013a49bcb5094ac3caf03be372"
+    },
+    {
+      "path": "projects/criterion-memory/notes/dedup-state-separation-design-v0.1.md",
+      "sha256": "a8880c3b0fdeab8923deaa349cba967cb10d9fd2b47f39e3f97fb869c02152b2"
+    }
+  ],
+  "validation": {
+    "new_ledger": "passed",
+    "aggregate_count_arithmetic": "passed",
+    "balanced_accuracy_arithmetic": "passed",
+    "prompt_json_examples": "valid",
+    "judge_input_whitelist_excludes_question_ledger": true,
+    "old_source_registry_records": "byte_preserved",
+    "source_external_model_authorization": false,
+    "original_project_and_manuscript_hashes": "preserved",
+    "local_links": "resolved including saved self-manifest",
+    "no_completed_stage_markers": true,
+    "source_case_grouping": "pending_confirmation",
+    "paired_corrected_and_worsened_counts": "not_provided"
+  },
+  "followup_source_registration": "Eight records appended to the original registry prefix: five public papers and three local aggregate/researcher-note sources. Local sources remain external-model unauthorized."
+}

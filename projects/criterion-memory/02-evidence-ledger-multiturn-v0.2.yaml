@@ -1,0 +1,99 @@
+project: criterion-memory
+schema_version: 1
+claims:
+  - claim_id: L01
+    statement: "Concat supplies the instruction shards together as bullet points in a single turn."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-36118295d9f5aeba
+        locator: "arXiv v1, Section 3.3, Concat paragraph"
+    opposition: []
+    limitations: "Reported setting, not a test of arbitrary model-generated summaries or clinical diagnosis."
+  - claim_id: L02
+    statement: "The tested Recap and Snowball variants improve over Sharded but remain below Full or Concat."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-36118295d9f5aeba
+        locator: "arXiv v1, Section 7.1, paragraph following Table 2"
+    opposition: []
+    limitations: "The statement is restricted to the reported recapitulation experiments, not a universal model claim."
+  - claim_id: L03
+    statement: "The sharding design requires equivalent information under shard reordering."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-36118295d9f5aeba
+        locator: "arXiv v1, Appendix B, P3: Order Insensitive"
+    opposition: []
+    limitations: "Clinical event time and valid revisions need separate handling; this condition cannot be assumed for medical dialogue."
+  - claim_id: L04
+    statement: "The authors acknowledge that automated simulations are not representative of natural human-AI conversations."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-36118295d9f5aeba
+        locator: "arXiv v1, Section 9, first paragraph"
+    opposition: []
+    limitations: "Selected full-text sections inspected; no clinical generalization is verified."
+  - claim_id: L05
+    statement: "Intent Mismatch proposes a Mediator-Assistant architecture separating intent understanding from task execution."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-550899b424f81468
+        locator: "arXiv v1, Abstract, paragraphs beginning We theoretically show and By utilizing"
+    opposition: []
+    limitations: "Abstract only; theoretical assumptions, algorithms and implementation are not verified here."
+  - claim_id: L06
+    statement: "Evolving User Intent describes incremental disclosure, revision and redirection in its multi-turn task framework."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-711f3a72e6127318
+        locator: "arXiv v1, Abstract, second paragraph"
+    opposition: []
+    limitations: "Abstract only; full benchmark and overlap with diagnostic reassessment remain to review."
+  - claim_id: L07
+    statement: "VivaBench reports fixation on initial hypotheses and premature diagnostic closure among its observed failure modes."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-3d7014c2a14a6dd7
+        locator: "arXiv v1, Abstract, paragraph beginning Our analysis identified"
+    opposition: []
+    limitations: "Abstract only; this reported analysis has not been independently reproduced here."
+  - claim_id: L08
+    statement: "DDO separates sequential symptom inquiry from disease classification and optimizes their objectives separately."
+    type: fact
+    status: verified
+    confidence: high
+    support:
+      - source_id: src-ad9d66d28bdc2eac
+        locator: "ACL Anthology 2025.emnlp-main.1340, official Abstract, first and second paragraphs"
+    opposition: []
+    limitations: "Abstract only; full method, data conditions and reproduction requirements remain unread."
+  - claim_id: HR01
+    statement: "At the same observed evidence prefix, early branch commitments may create diagnostic path dependence beyond presentation effects."
+    type: hypothesis
+    status: unverified
+    confidence: low
+    support: []
+    opposition: []
+    limitations: "No audit of the user's tree or experiment establishes this mechanism; closely related prior failures already exist."
+  - claim_id: HR02
+    statement: "A selective reassessment policy may improve error recovery relative to fixed reassessment under matched cumulative computation."
+    type: hypothesis
+    status: unverified
+    confidence: low
+    support: []
+    opposition: []
+    limitations: "No implementation, experiment or novelty clearance; stronger full-prefix recomputation may already solve the problem."
